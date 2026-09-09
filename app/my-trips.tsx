@@ -1,7 +1,8 @@
+import { useAppTheme } from '@/contexts/ThemeContext';
 import { cancelarViaje, iniciarViaje, listarMisViajes } from '@/services/viajes';
 import { Viaje } from '@/services/types';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,7 +14,7 @@ import {
   View,
 } from 'react-native';
 
-const C = {
+const DARK_C = {
   bg:        '#131517',
   card:      '#1E2126',
   border:    '#2E343C',
@@ -26,14 +27,30 @@ const C = {
   amber:     '#E0B84C',
 };
 
+const LIGHT_C = {
+  bg: '#F5F7F8',
+  card: '#FFFFFF',
+  border: '#DDE1E6',
+  text: '#11181C',
+  textMuted: '#7A8593',
+  textSub: '#5B6472',
+  accent: '#4A90D9',
+  green: '#3DBE7A',
+  red: '#E05C5C',
+  amber: '#E0B84C',
+};
+
 const BADGE: Record<string, { label: string; color: string; bg: string }> = {
-  PROGRAMADO: { label: 'Programado', color: C.accent, bg: 'rgba(74,144,217,0.15)' },
-  EN_CURSO:   { label: 'En curso',   color: C.amber,  bg: 'rgba(224,184,76,0.15)' },
-  COMPLETADO: { label: 'Completado', color: C.green,  bg: 'rgba(61,190,122,0.15)' },
-  CANCELADO:  { label: 'Cancelado',  color: C.red,    bg: 'rgba(224,92,92,0.15)' },
+  PROGRAMADO: { label: 'Programado', color: DARK_C.accent, bg: 'rgba(74,144,217,0.15)' },
+  EN_CURSO:   { label: 'En curso',   color: DARK_C.amber,  bg: 'rgba(224,184,76,0.15)' },
+  COMPLETADO: { label: 'Completado', color: DARK_C.green,  bg: 'rgba(61,190,122,0.15)' },
+  CANCELADO:  { label: 'Cancelado',  color: DARK_C.red,    bg: 'rgba(224,92,92,0.15)' },
 };
 
 export default function MyTripsScreen() {
+  const { isDark } = useAppTheme();
+  const C = isDark ? DARK_C : LIGHT_C;
+  const s = useMemo(() => createStyles(C), [C]);
   const router = useRouter();
   const [viajes, setViajes]     = useState<Viaje[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -192,7 +209,8 @@ export default function MyTripsScreen() {
   );
 }
 
-const s = StyleSheet.create({
+function createStyles(C: any) {
+  return StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
 
   header: {
@@ -241,3 +259,4 @@ const s = StyleSheet.create({
   manageBtn:  { backgroundColor: 'rgba(224,184,76,0.15)', borderWidth: 1, borderColor: C.amber },
   manageText: { color: C.amber, fontWeight: '700', fontSize: 14 },
 });
+}

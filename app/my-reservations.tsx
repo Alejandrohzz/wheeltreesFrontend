@@ -1,6 +1,7 @@
+import { useAppTheme } from '@/contexts/ThemeContext';
 import { cancelarReserva, misReservas, Reserva } from '@/services/reservas';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,7 +13,7 @@ import {
   View,
 } from 'react-native';
 
-const C = {
+const DARK_C = {
   bg:        '#131517',
   card:      '#1E2126',
   border:    '#2E343C',
@@ -25,17 +26,30 @@ const C = {
   yellow:    '#E0B84A',
 };
 
+const LIGHT_C = {
+  bg: '#F5F7F8',
+  card: '#FFFFFF',
+  border: '#DDE1E6',
+  text: '#11181C',
+  textMuted: '#7A8593',
+  textSub: '#5B6472',
+  accent: '#4A90D9',
+  green: '#3DBE7A',
+  red: '#E05C5C',
+  yellow: '#E0B84A',
+};
+
 // Regla de negocio (UR010): cancelación permitida hasta 30 min antes de la
 // salida. El backend actual NO valida esto todavía (solo revisa el estado),
 // así que se aplica aquí como aviso/bloqueo preventivo del lado del cliente.
 const MINUTOS_LIMITE_CANCELACION = 30;
 
 const ESTILOS_ESTADO: Record<string, { color: string; label: string }> = {
-  PENDIENTE:  { color: C.yellow, label: 'Pendiente' },
-  CONFIRMADA: { color: C.green,  label: 'Confirmada' },
-  RECHAZADA:  { color: C.red,    label: 'Rechazada' },
-  CANCELADA:  { color: C.textMuted, label: 'Cancelada' },
-  COMPLETADA: { color: C.accent, label: 'Completada' },
+  PENDIENTE:  { color: DARK_C.yellow, label: 'Pendiente' },
+  CONFIRMADA: { color: DARK_C.green,  label: 'Confirmada' },
+  RECHAZADA:  { color: DARK_C.red,    label: 'Rechazada' },
+  CANCELADA:  { color: DARK_C.textMuted, label: 'Cancelada' },
+  COMPLETADA: { color: DARK_C.accent, label: 'Completada' },
 };
 
 function minutosParaSalida(fechaHoraSalida: string) {
@@ -48,6 +62,9 @@ function puedeCancelarse(r: Reserva) {
 }
 
 export default function MyReservationsScreen() {
+  const { isDark } = useAppTheme();
+  const C = isDark ? DARK_C : LIGHT_C;
+  const s = useMemo(() => createStyles(C), [C]);
   const router = useRouter();
   const [reservas, setReservas]         = useState<Reserva[]>([]);
   const [cargando, setCargando]         = useState(true);
@@ -222,7 +239,8 @@ export default function MyReservationsScreen() {
   );
 }
 
-const s = StyleSheet.create({
+function createStyles(C: any) {
+  return StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
 
   header: {
@@ -282,6 +300,15 @@ const s = StyleSheet.create({
   },
   trackBtnText: { color: C.accent, fontWeight: '700', fontSize: 14 },
 
+  chatBtn: {
+    backgroundColor: C.accent,
+    borderRadius: 12,
+    paddingVertical: 11,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  chatBtnText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
+
   cancelBtn: {
     borderWidth: 1,
     borderColor: C.red,
@@ -306,3 +333,4 @@ const s = StyleSheet.create({
     textAlign: 'center',
   },
 });
+}

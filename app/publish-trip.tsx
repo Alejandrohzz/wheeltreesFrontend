@@ -1,3 +1,4 @@
+import { useAppTheme } from '@/contexts/ThemeContext';
 import PlaceAutocompleteInput from '@/components/PlaceAutocompleteInput';
 import { useAuth } from '@/context/AuthContext';
 import { getRoute, LatLng, RouteInfo } from '@/services/directions';
@@ -9,7 +10,7 @@ import { listarVehiculos } from '@/services/vehiculos';
 import { crearViaje } from '@/services/viajes';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -25,7 +26,7 @@ import {
   View,
 } from 'react-native';
 
-const C = {
+const DARK_C = {
   bg:          '#131517',
   surface:     '#1E2126',
   border:      '#2E343C',
@@ -35,6 +36,18 @@ const C = {
   accent:      '#4A90D9',
   accentGreen: '#3DBE7A',
   error:       '#E05C5C',
+};
+
+const LIGHT_C = {
+  bg: '#F5F7F8',
+  surface: '#FFFFFF',
+  border: '#DDE1E6',
+  text: '#11181C',
+  textMuted: '#7A8593',
+  textSub: '#5B6472',
+  accent: '#4A90D9',
+  accentGreen: '#3DBE7A',
+  error: '#E05C5C',
 };
 
 const DARK_MAP_STYLE = [
@@ -50,9 +63,15 @@ const DARK_MAP_STYLE = [
   { featureType: 'landscape',    elementType: 'geometry', stylers: [{ color: '#1c1c1c' }] },
 ];
 
+const staticStyles = StyleSheet.create({
+  mapPreview: { width: '100%', height: 160 },
+});
+
 function RouteMap({ coordinates }: { coordinates: LatLng[] }) {
+  const { isDark } = useAppTheme();
+
   if (Platform.OS === 'web' || coordinates.length === 0) {
-    return <View style={[s.mapPreview, { backgroundColor: '#1c1c1c' }]} />;
+    return <View style={[staticStyles.mapPreview, { backgroundColor: isDark ? '#1c1c1c' : '#F5F7F8' }]} />;
   }
   const MapView = require('react-native-maps').default;
   const { Polyline, Marker, PROVIDER_DEFAULT } = require('react-native-maps');
@@ -68,16 +87,16 @@ function RouteMap({ coordinates }: { coordinates: LatLng[] }) {
 
   return (
     <MapView
-      style={s.mapPreview}
+      style={staticStyles.mapPreview}
       provider={PROVIDER_DEFAULT}
-      customMapStyle={DARK_MAP_STYLE}
+      customMapStyle={isDark ? DARK_MAP_STYLE : []}
       region={region}
       scrollEnabled={false}
       zoomEnabled={false}
       pitchEnabled={false}
       rotateEnabled={false}
     >
-      <Polyline coordinates={coordinates} strokeColor={C.accentGreen} strokeWidth={4} />
+      <Polyline coordinates={coordinates} strokeColor={DARK_C.accentGreen} strokeWidth={4} />
       <Marker coordinate={coordinates[0]} pinColor="#3DBE7A" />
       <Marker coordinate={coordinates[coordinates.length - 1]} pinColor="#da6720" />
     </MapView>
@@ -96,6 +115,9 @@ const esDestinoUniversidad = (texto: string) =>
   texto.toLowerCase().includes('universidad el bosque');
 
 export default function PublishTripScreen() {
+  const { isDark } = useAppTheme();
+  const C = isDark ? DARK_C : LIGHT_C;
+  const s = useMemo(() => createStyles(C), [C]);
   const router = useRouter();
   const { usuario } = useAuth();
   const params = useLocalSearchParams<{
@@ -571,7 +593,8 @@ export default function PublishTripScreen() {
   );
 }
 
-const s = StyleSheet.create({
+function createStyles(C: any) {
+  return StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
 
   header: {
@@ -813,3 +836,4 @@ const s = StyleSheet.create({
   },
   publishText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
 });
+}

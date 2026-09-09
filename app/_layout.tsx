@@ -1,6 +1,7 @@
 import { AuthProvider } from '@/context/AuthContext';
+import { ThemeProvider as AppThemeProvider } from '@/contexts/ThemeContext';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, ThemeProvider } from "expo-router/react-navigation";
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
@@ -51,7 +52,7 @@ function AppShell() {
         <Stack.Screen name="(tabs)"   options={{ headerShown: false }} />
         <Stack.Screen name="modal"    options={{ presentation: 'modal' }} />
       </Stack>
-      <StatusBar style="auto" />
+      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
 
       {showSplash && <SplashOverlay onFinish={() => setShowSplash(false)} />}
     </ThemeProvider>
@@ -60,15 +61,17 @@ function AppShell() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <AppShell />
-    </AuthProvider>
+    <AppThemeProvider>
+      <AuthProvider>
+        <AppShell />
+      </AuthProvider>
+    </AppThemeProvider>
   );
 }
 
 const styles = StyleSheet.create({
   splash: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: '#131517',
     alignItems: 'center',
     justifyContent: 'center',

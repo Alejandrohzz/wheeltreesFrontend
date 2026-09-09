@@ -1,3 +1,4 @@
+import { useAppTheme } from '@/contexts/ThemeContext';
 import { getRoute, LatLng } from '@/services/directions';
 import {
   conectarTracking,
@@ -9,7 +10,7 @@ import {
 import { Viaje } from '@/services/types';
 import { detalleViaje } from '@/services/viajes';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -21,7 +22,7 @@ import {
   View,
 } from 'react-native';
 
-const C = {
+const DARK_C = {
   bg:        '#131517',
   card:      '#1E2126',
   border:    '#2E343C',
@@ -32,6 +33,19 @@ const C = {
   green:     '#3DBE7A',
   red:       '#E05C5C',
   amber:     '#E0B84C',
+};
+
+const LIGHT_C = {
+  bg: '#F5F7F8',
+  card: '#FFFFFF',
+  border: '#DDE1E6',
+  text: '#11181C',
+  textMuted: '#7A8593',
+  textSub: '#5B6472',
+  accent: '#4A90D9',
+  green: '#3DBE7A',
+  red: '#E05C5C',
+  amber: '#E0B84C',
 };
 
 const DARK_MAP_STYLE = [
@@ -48,10 +62,10 @@ const DARK_MAP_STYLE = [
 ];
 
 const ESTADO_LABEL: Record<string, { label: string; color: string }> = {
-  PROGRAMADO: { label: 'Esperando al conductor', color: C.amber },
-  EN_CURSO:   { label: 'En camino',              color: C.green },
-  COMPLETADO: { label: 'Viaje finalizado',       color: C.accent },
-  CANCELADO:  { label: 'Viaje cancelado',        color: C.red },
+  PROGRAMADO: { label: 'Esperando al conductor', color: DARK_C.amber },
+  EN_CURSO:   { label: 'En camino',              color: DARK_C.green },
+  COMPLETADO: { label: 'Viaje finalizado',       color: DARK_C.accent },
+  CANCELADO:  { label: 'Viaje cancelado',        color: DARK_C.red },
 };
 
 function TrackingMap({
@@ -67,8 +81,12 @@ function TrackingMap({
   vehiculo: LatLng | null;
   routeCoords: LatLng[];
 }) {
+  const { isDark } = useAppTheme();
+  const C = isDark ? DARK_C : LIGHT_C;
+  const s = useMemo(() => createStyles(C), [C]);
+
   if (Platform.OS === 'web') {
-    return <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#1c1c1c' }]} />;
+    return <View style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? '#1c1c1c' : '#F5F7F8' }]} />;
   }
 
   const MapView = require('react-native-maps').default;
@@ -77,9 +95,9 @@ function TrackingMap({
   return (
     <MapView
       ref={mapRef}
-      style={StyleSheet.absoluteFillObject}
+      style={StyleSheet.absoluteFill}
       provider={PROVIDER_DEFAULT}
-      customMapStyle={DARK_MAP_STYLE}
+      customMapStyle={isDark ? DARK_MAP_STYLE : []}
       initialRegion={{
         latitude: (origen ?? destino)?.latitude ?? 4.711,
         longitude: (origen ?? destino)?.longitude ?? -74.0721,
@@ -110,6 +128,9 @@ function TrackingMap({
 }
 
 export default function TripTrackingScreen() {
+  const { isDark } = useAppTheme();
+  const C = isDark ? DARK_C : LIGHT_C;
+  const s = useMemo(() => createStyles(C), [C]);
   const router = useRouter();
   const { viajeId } = useLocalSearchParams<{ viajeId: string }>();
   const mapRef = useRef<any>(null);
@@ -294,7 +315,8 @@ export default function TripTrackingScreen() {
   );
 }
 
-const s = StyleSheet.create({
+function createStyles(C: any) {
+  return StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
 
   header: {
@@ -333,3 +355,4 @@ const s = StyleSheet.create({
   vehiculoInfo: { fontSize: 13, color: C.textSub, marginTop: 2 },
   hint: { fontSize: 12, color: C.textMuted, marginTop: 6 },
 });
+}

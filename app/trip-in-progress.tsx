@@ -1,3 +1,4 @@
+import { useAppTheme } from '@/contexts/ThemeContext';
 import { marcarAbordo, Reserva, reservasDeViaje } from '@/services/reservas';
 import { Viaje } from '@/services/types';
 import {
@@ -8,7 +9,7 @@ import {
 import { completarViaje, detalleViaje } from '@/services/viajes';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -21,7 +22,7 @@ import {
   View,
 } from 'react-native';
 
-const C = {
+const DARK_C = {
   bg:        '#131517',
   card:      '#1E2126',
   border:    '#2E343C',
@@ -35,7 +36,24 @@ const C = {
   orange:    '#F5821F',
 };
 
+const LIGHT_C = {
+  bg: '#F5F7F8',
+  card: '#FFFFFF',
+  border: '#DDE1E6',
+  text: '#11181C',
+  textMuted: '#7A8593',
+  textSub: '#5B6472',
+  accent: '#4A90D9',
+  green: '#3DBE7A',
+  red: '#E05C5C',
+  amber: '#E0B84C',
+  orange: '#F5821F',
+};
+
 export default function TripInProgressScreen() {
+  const { isDark } = useAppTheme();
+  const C = isDark ? DARK_C : LIGHT_C;
+  const s = useMemo(() => createStyles(C), [C]);
   const router = useRouter();
   const { viajeId } = useLocalSearchParams<{ viajeId: string }>();
 
@@ -275,7 +293,8 @@ export default function TripInProgressScreen() {
   );
 }
 
-const s = StyleSheet.create({
+function createStyles(C: any) {
+  return StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
 
   header: {
@@ -342,3 +361,4 @@ const s = StyleSheet.create({
   },
   finText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
 });
+}

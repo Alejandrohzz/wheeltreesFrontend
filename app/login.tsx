@@ -1,8 +1,9 @@
+import { useAppTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { construirEmailDesdeUsuario, DOMINIO_CORREO, extraerUsuarioDeEmail } from '@/services/auth';
 import { guardarUltimoUsuario, obtenerUltimoUsuario } from '@/services/biometrics';
 import { useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,7 +17,7 @@ import {
   View
 } from 'react-native';
 
-const C = {
+const DARK_C = {
   bg:            '#131517',
   surface:       '#1E2126',
   surfaceAlt:    '#252A30',
@@ -33,7 +34,27 @@ const C = {
   error:         '#E05C5C',
 };
 
+const LIGHT_C = {
+  bg: '#F5F7F8',
+  surface: '#FFFFFF',
+  surfaceAlt: '#EDEFF2',
+  border: '#DDE1E6',
+  borderFocus: '#4A90D9',
+  text: '#11181C',
+  textMuted: '#7A8593',
+  textSecondary: '#5B6472',
+  primary: '#131517',
+  primaryText: '#FFFFFF',
+  accent: '#4A90D9',
+  accentGreen: '#3DBE7A',
+  iconMuted: '#9099A6',
+  error: '#E05C5C',
+};
+
 export default function LoginScreen() {
+  const { isDark } = useAppTheme();
+  const C = isDark ? DARK_C : LIGHT_C;
+  const s = useMemo(() => createStyles(C), [C]);
   const router = useRouter();
   const {
     usuario: sesionActiva,
@@ -254,7 +275,8 @@ export default function LoginScreen() {
   );
 }
 
-const s = StyleSheet.create({
+function createStyles(C: any) {
+  return StyleSheet.create({
   flex:      { flex: 1, backgroundColor: C.bg },
   container: { flex: 1, paddingHorizontal: 28, paddingTop: 80 },
   title: {
@@ -302,3 +324,4 @@ const s = StyleSheet.create({
   footerText:       { fontSize: 14, color: C.textMuted },
   footerLink:       { fontSize: 14, fontWeight: '600', color: C.accent },
 });
+}

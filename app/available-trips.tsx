@@ -1,12 +1,13 @@
+import { useAppTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { getRoute, LatLng } from '@/services/directions';
 import { solicitarReserva } from '@/services/reservas';
 import { Viaje } from '@/services/types';
 import { listarViajes } from '@/services/viajes';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from "expo-router/react-navigation";
 import { useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -19,12 +20,23 @@ import {
   View,
 } from 'react-native';
 
-const C = {
+const DARK_C = {
   bg: '#131517',
   card: '#1E2126',
   border: '#2E343C',
   text: '#FFFFFF',
   muted: '#9BA3AD',
+  green: '#3DBE7A',
+  blue: '#4A90D9',
+  orange: '#DA6720',
+};
+
+const LIGHT_C = {
+  bg: '#F5F7F8',
+  card: '#FFFFFF',
+  border: '#DDE1E6',
+  text: '#11181C',
+  muted: '#5B6472',
   green: '#3DBE7A',
   blue: '#4A90D9',
   orange: '#DA6720',
@@ -54,6 +66,10 @@ function AvailableTripsMap({
   selectedId: string | null;
   onSelect: (viaje: ViajeConRuta) => void;
 }) {
+  const { isDark } = useAppTheme();
+  const C = isDark ? DARK_C : LIGHT_C;
+  const s = useMemo(() => createStyles(C), [C]);
+
   if (Platform.OS === 'web') {
     return (
       <View style={s.mapFallback}>
@@ -68,9 +84,9 @@ function AvailableTripsMap({
 
   return (
     <MapView
-      style={StyleSheet.absoluteFillObject}
+      style={StyleSheet.absoluteFill}
       provider={PROVIDER_DEFAULT}
-      customMapStyle={DARK_MAP_STYLE}
+      customMapStyle={isDark ? DARK_MAP_STYLE : []}
       initialRegion={{
         latitude: 4.711,
         longitude: -74.0721,
@@ -128,6 +144,9 @@ function AvailableTripsMap({
 }
 
 export default function AvailableTripsScreen() {
+  const { isDark } = useAppTheme();
+  const C = isDark ? DARK_C : LIGHT_C;
+  const s = useMemo(() => createStyles(C), [C]);
   const router = useRouter();
   const { usuario } = useAuth();
   const [viajes, setViajes] = useState<ViajeConRuta[]>([]);
@@ -304,7 +323,8 @@ export default function AvailableTripsScreen() {
   );
 }
 
-const s = StyleSheet.create({
+function createStyles(C: any) {
+  return StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   header: {
     height: 64,
@@ -388,3 +408,4 @@ const s = StyleSheet.create({
   calloutTitle: { fontWeight: '700', marginBottom: 2 },
   calloutText: { fontSize: 12, marginTop: 2 },
 });
+}

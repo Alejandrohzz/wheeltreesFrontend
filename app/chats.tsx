@@ -1,6 +1,7 @@
+import { useAppTheme } from '@/contexts/ThemeContext';
 import { ChatResumen, misChats } from '@/services/chat';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   SafeAreaView,
@@ -11,7 +12,7 @@ import {
   View,
 } from 'react-native';
 
-const C = {
+const DARK_C = {
   bg:        '#131517',
   card:      '#1E2126',
   border:    '#2E343C',
@@ -21,6 +22,18 @@ const C = {
   accent:    '#4A90D9',
   green:     '#3DBE7A',
   red:       '#E05C5C',
+};
+
+const LIGHT_C = {
+  bg: '#F5F7F8',
+  card: '#FFFFFF',
+  border: '#DDE1E6',
+  text: '#11181C',
+  textMuted: '#7A8593',
+  textSub: '#5B6472',
+  accent: '#4A90D9',
+  green: '#3DBE7A',
+  red: '#E05C5C',
 };
 
 function formatearHora(iso?: string) {
@@ -34,6 +47,9 @@ function formatearHora(iso?: string) {
 }
 
 export default function ChatsScreen() {
+  const { isDark } = useAppTheme();
+  const C = isDark ? DARK_C : LIGHT_C;
+  const s = useMemo(() => createStyles(C), [C]);
   const router = useRouter();
   const [chats, setChats]     = useState<ChatResumen[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -137,7 +153,8 @@ export default function ChatsScreen() {
   );
 }
 
-const s = StyleSheet.create({
+function createStyles(C: any) {
+  return StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
 
   header: {
@@ -203,3 +220,4 @@ const s = StyleSheet.create({
   },
   badgeText: { fontSize: 11, fontWeight: '700', color: '#0A0A0A' },
 });
+}

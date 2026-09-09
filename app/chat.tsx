@@ -1,3 +1,4 @@
+import { useAppTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import {
   conectarChat,
@@ -9,7 +10,7 @@ import {
   suscribirseAPersona,
 } from '@/services/chat';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -23,7 +24,7 @@ import {
   View,
 } from 'react-native';
 
-const C = {
+const DARK_C = {
   bg:        '#131517',
   card:      '#1E2126',
   bubbleMe:  '#3DBE7A',
@@ -35,7 +36,22 @@ const C = {
   red:       '#E05C5C',
 };
 
+const LIGHT_C = {
+  bg: '#F5F7F8',
+  card: '#FFFFFF',
+  bubbleMe: '#3DBE7A',
+  border: '#DDE1E6',
+  text: '#11181C',
+  textMuted: '#7A8593',
+  textSub: '#5B6472',
+  accent: '#4A90D9',
+  red: '#E05C5C',
+};
+
 export default function ChatScreen() {
+  const { isDark } = useAppTheme();
+  const C = isDark ? DARK_C : LIGHT_C;
+  const s = useMemo(() => createStyles(C), [C]);
   const router = useRouter();
   const { usuario } = useAuth();
   const { otroUsuarioId, otroUsuarioNombre } = useLocalSearchParams<{
@@ -222,7 +238,8 @@ export default function ChatScreen() {
   );
 }
 
-const s = StyleSheet.create({
+function createStyles(C: any) {
+  return StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
 
   header: {
@@ -303,3 +320,4 @@ const s = StyleSheet.create({
   sendBtnDisabled: { opacity: 0.4 },
   sendIcon: { fontSize: 17, color: '#0A0A0A', marginLeft: 2 },
 });
+}

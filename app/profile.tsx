@@ -1,9 +1,10 @@
+import { useAppTheme } from '@/contexts/ThemeContext';
 import PlaceAutocompleteInput from '@/components/PlaceAutocompleteInput';
 import { useAuth } from '@/context/AuthContext';
 import { getPlaceLatLng, PlacePrediction } from '@/services/places';
 import { actualizarPerfil, actualizarRol, obtenerMiPerfil } from '@/services/usuarios';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -16,7 +17,7 @@ import {
     View,
 } from 'react-native';
 
-const C = {
+const DARK_C = {
   bg:          '#131517',
   surface:     '#1A1D21',
   card:        '#1E2126',
@@ -27,6 +28,19 @@ const C = {
   accentGreen: '#3DBE7A',
   red:         '#E05C5C',
   iconMuted:   '#4A5160',
+};
+
+const LIGHT_C = {
+  bg: '#F5F7F8',
+  surface: '#FFFFFF',
+  card: '#FFFFFF',
+  border: '#DDE1E6',
+  text: '#11181C',
+  textMuted: '#7A8593',
+  textSub: '#5B6472',
+  accentGreen: '#3DBE7A',
+  red: '#E05C5C',
+  iconMuted: '#9099A6',
 };
 
 // Tipo de usuario legible
@@ -40,6 +54,10 @@ function Section({ title, items }: {
   title?: string;
   items: { icon: string; label: string; onPress?: () => void }[];
 }) {
+  const { isDark } = useAppTheme();
+  const C = isDark ? DARK_C : LIGHT_C;
+  const s = useMemo(() => createStyles(C), [C]);
+
   return (
     <View style={s.section}>
       {title && <Text style={s.sectionTitle}>{title}</Text>}
@@ -87,6 +105,9 @@ function DireccionRow({
   guardando: boolean;
   onGuardar: (texto: string, lat: number, lng: number) => Promise<void>;
 }) {
+  const { isDark } = useAppTheme();
+  const C = isDark ? DARK_C : LIGHT_C;
+  const s = useMemo(() => createStyles(C), [C]);
   const [editando, setEditando]         = useState(false);
   const [texto, setTexto]               = useState(direccion ?? '');
   // Se inicializa con las coordenadas ya guardadas: si el usuario abre y
@@ -188,6 +209,9 @@ function DireccionRow({
 }
 
 export default function ProfileScreen() {
+  const { isDark, mode, setMode } = useAppTheme();
+  const C = isDark ? DARK_C : LIGHT_C;
+  const s = useMemo(() => createStyles(C), [C]);
   const {
     usuario,
     cerrarSesion,
@@ -401,6 +425,40 @@ export default function ProfileScreen() {
           ]}
         />
 
+        {/* ── APARIENCIA ─────────────────────────────────────────────────── */}
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>Apariencia</Text>
+          <View style={s.card}>
+            <View style={s.temaRow}>
+              {([
+                { value: 'auto',  label: 'Automático', icon: '🕒' },
+                { value: 'light', label: 'Claro',       icon: '☀️' },
+                { value: 'dark',  label: 'Oscuro',      icon: '🌙' },
+              ] as const).map((opcion) => {
+                const activo = mode === opcion.value;
+                return (
+                  <TouchableOpacity
+                    key={opcion.value}
+                    style={[s.temaOpcion, activo && s.temaOpcionActiva]}
+                    onPress={() => setMode(opcion.value)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={s.temaIcono}>{opcion.icon}</Text>
+                    <Text style={[s.temaLabel, activo && s.temaLabelActivo]}>
+                      {opcion.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            {mode === 'auto' && (
+              <Text style={s.temaHint}>
+                Cambia solo entre 6:00 a. m. y 6:00 p. m.
+              </Text>
+            )}
+          </View>
+        </View>
+
         {/* ── AJUSTES ────────────────────────────────────────────────────── */}
         <Section
           title="Settings and Preferences"
@@ -477,7 +535,8 @@ export default function ProfileScreen() {
   );
 }
 
-const s = StyleSheet.create({
+function createStyles(C: any) {
+  return StyleSheet.create({
   root:   { flex: 1, backgroundColor: C.bg },
   scroll: { paddingHorizontal: 20, paddingBottom: 20 },
 
@@ -665,4 +724,30 @@ const s = StyleSheet.create({
   personIconWrap: { alignItems: 'center', gap: 2 },
   personHead:     { width: 10, height: 10, borderRadius: 5, backgroundColor: C.accentGreen },
   personBody:     { width: 16, height: 8, borderRadius: 8, backgroundColor: C.accentGreen },
+
+  // Selector de apariencia (Automático / Claro / Oscuro)
+  temaRow: { flexDirection: 'row', padding: 12, gap: 8 },
+  temaOpcion: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    gap: 4,
+  },
+  temaOpcionActiva: {
+    borderColor: C.accentGreen,
+    backgroundColor: 'rgba(61,190,122,0.12)',
+  },
+  temaIcono: { fontSize: 18 },
+  temaLabel: { fontSize: 12, fontWeight: '600', color: C.textSub },
+  temaLabelActivo: { color: C.accentGreen },
+  temaHint: {
+    fontSize: 12,
+    color: C.textMuted,
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+  },
 });
+}

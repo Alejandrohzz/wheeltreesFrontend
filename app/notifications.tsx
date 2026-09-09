@@ -1,8 +1,10 @@
+import { useAuth } from '@/context/AuthContext';
+import { useAppTheme } from '@/contexts/ThemeContext';
 import { Viaje } from '@/services/types';
 import { listarMisViajes } from '@/services/viajes';
-import { Reserva, reservasDeViaje, responderReserva } from '@/services/reservas';
+import { misReservas, Reserva, reservasDeViaje, responderReserva } from '@/services/reservas';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,7 +16,7 @@ import {
   View,
 } from 'react-native';
 
-const C = {
+const DARK_C = {
   bg:        '#131517',
   card:      '#1E2126',
   border:    '#2E343C',
@@ -26,24 +28,49 @@ const C = {
   red:       '#E05C5C',
 };
 
+const LIGHT_C = {
+  bg: '#F5F7F8',
+  card: '#FFFFFF',
+  border: '#DDE1E6',
+  text: '#11181C',
+  textMuted: '#7A8593',
+  textSub: '#5B6472',
+  accent: '#4A90D9',
+  green: '#3DBE7A',
+  red: '#E05C5C',
+};
+
 // NOTA: no hay un endpoint que traiga "todas mis notificaciones" de una sola
-// vez. Se arma consultando primero los viajes del conductor
-// (GET /api/viajes/mis-viajes) y luego las reservas de cada uno
-// (GET /api/reservas/viaje/{viajeId}). Se muestran dos tipos de tarjeta:
-//   - PENDIENTE   → solicitud nueva, con botones Aceptar/Rechazar.
-//   - CANCELADA   → aviso de que un pasajero canceló, solo informativo.
-// El backend no guarda una fecha de cancelación (solo "creadoEn", que es la
-// fecha en que se creó la reserva original), así que no se puede filtrar
-// por "canceladas recientemente"; se muestran todas y el conductor puede
+// vez, así que la pantalla arma la lista distinto según el rol:
+//
+//  CONDUCTOR: consulta sus viajes (GET /api/viajes/mis-viajes) y luego las
+//  reservas de cada uno (GET /api/reservas/viaje/{viajeId}). Dos tipos de
+//  tarjeta:
+//    - PENDIENTE   → solicitud nueva, con botones Aceptar/Rechazar.
+//    - CANCELADA   → aviso de que un pasajero canceló, solo informativo.
+//
+//  PASAJERO: consulta sus propias reservas (GET /api/reservas/mis-reservas).
+//  Una tarjeta:
+//    - COMPLETADA  → el conductor finalizó el viaje.
+//
+// El backend no guarda una fecha de cancelación/finalización (solo
+// "creadoEn", la fecha en que se creó la reserva), así que no se puede
+// filtrar por "recientes"; se muestran todas y el usuario puede
 // descartarlas de la vista con "Entendido" (el descarte es solo local, no
 // se guarda en el servidor).
-const ESTADO_PENDIENTE = 'PENDIENTE';
-const ESTADO_CANCELADA = 'CANCELADA';
+const ESTADO_PENDIENTE  = 'PENDIENTE';
+const ESTADO_CANCELADA  = 'CANCELADA';
+const ESTADO_COMPLETADA = 'COMPLETADA';
 
 type ReservaConViaje = Reserva & { destinoViaje?: string };
 
 export default function NotificationsScreen() {
+  const { isDark } = useAppTheme();
+  const C = isDark ? DARK_C : LIGHT_C;
+  const s = useMemo(() => createStyles(C), [C]);
   const router = useRouter();
+  const { usuario } = useAuth();
+  const esPasajero = usuario?.rol === 'PASAJERO';
   const [reservas, setReservas]     = useState<ReservaConViaje[]>([]);
   const [descartadas, setDescartadas] = useState<Set<string>>(new Set());
   const [cargando, setCargando]     = useState(true);
@@ -54,6 +81,17 @@ export default function NotificationsScreen() {
     setCargando(true);
     setError('');
     try {
+      if (esPasajero) {
+        // Pasajero: solo le interesa saber cuándo el conductor finalizó
+        // el viaje de una reserva suya (CONFIRMADA → COMPLETADA).
+        const misRes = await misReservas();
+        const finalizadas = misRes
+          .filter((r) => r.estado === ESTADO_COMPLETADA)
+          .sort((a, b) => new Date(b.creadoEn).getTime() - new Date(a.creadoEn).getTime());
+        setReservas(finalizadas);
+        return;
+      }
+
       const viajes: Viaje[] = await listarMisViajes();
 
       const listas = await Promise.all(
@@ -80,7 +118,7 @@ export default function NotificationsScreen() {
     } finally {
       setCargando(false);
     }
-  }, []);
+  }, [esPasajero]);
 
   useFocusEffect(
     useCallback(() => {
@@ -136,25 +174,34 @@ export default function NotificationsScreen() {
 
         {!cargando && !error && visibles.length === 0 && (
           <View style={s.centerBox}>
-            <Text style={s.emptyText}>No tienes notificaciones nuevas</Text>
+            <Text style={s.emptyText}>
+              {esPasajero ? 'No tienes viajes finalizados recientes' : 'No tienes notificaciones nuevas'}
+            </Text>
           </View>
         )}
 
         {!cargando && !error && visibles.map((r) => {
           const procesando = procesandoId === r.id;
           const esCancelacion = r.estado === ESTADO_CANCELADA;
+          const esFinalizado = esPasajero && r.estado === ESTADO_COMPLETADA;
 
           return (
             <View key={r.id} style={s.card}>
-              <View style={[s.badge, esCancelacion && s.badgeCancel]}>
-                <Text style={s.badgeIcon}>{esCancelacion ? '❌' : '🙋'}</Text>
-                <Text style={[s.badgeText, esCancelacion && s.badgeTextCancel]}>
-                  {esCancelacion ? 'Reserva cancelada' : 'Nueva solicitud de cupo'}
+              <View style={[s.badge, (esCancelacion || esFinalizado) && s.badgeCancel, esFinalizado && s.badgeDone]}>
+                <Text style={s.badgeIcon}>{esFinalizado ? '✅' : esCancelacion ? '❌' : '🙋'}</Text>
+                <Text style={[s.badgeText, (esCancelacion || esFinalizado) && s.badgeTextCancel, esFinalizado && s.badgeTextDone]}>
+                  {esFinalizado ? 'Viaje finalizado' : esCancelacion ? 'Reserva cancelada' : 'Nueva solicitud de cupo'}
                 </Text>
               </View>
 
-              <Text style={s.passenger}>{r.pasajeroNombre}</Text>
-              <Text style={s.email}>{r.pasajeroEmail}</Text>
+              {esFinalizado ? (
+                <Text style={s.passenger}>{r.conductorNombre}</Text>
+              ) : (
+                <>
+                  <Text style={s.passenger}>{r.pasajeroNombre}</Text>
+                  <Text style={s.email}>{r.pasajeroEmail}</Text>
+                </>
+              )}
 
               <Text style={s.detail}>
                 {r.origenViaje}{r.destinoViaje ? ` → ${r.destinoViaje}` : ''}
@@ -166,14 +213,20 @@ export default function NotificationsScreen() {
                 })}
               </Text>
 
-              {!!r.notasPasajero && (
+              {esFinalizado && (
+                <Text style={s.finalizadoText}>
+                  El conductor marcó este viaje como completado. ¡Gracias por viajar con WheelTrees!
+                </Text>
+              )}
+
+              {!!r.notasPasajero && !esFinalizado && (
                 <View style={s.notasBox}>
                   <Text style={s.notasLabel}>Nota del pasajero:</Text>
                   <Text style={s.notasText}>{r.notasPasajero}</Text>
                 </View>
               )}
 
-              {esCancelacion ? (
+              {esCancelacion || esFinalizado ? (
                 <TouchableOpacity
                   style={s.dismissBtn}
                   activeOpacity={0.7}
@@ -213,7 +266,8 @@ export default function NotificationsScreen() {
   );
 }
 
-const s = StyleSheet.create({
+function createStyles(C: any) {
+  return StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
 
   header: {
@@ -265,6 +319,8 @@ const s = StyleSheet.create({
   badgeText: { color: C.accent, fontSize: 12, fontWeight: '600' },
   badgeCancel: { backgroundColor: 'rgba(224,92,92,0.15)' },
   badgeTextCancel: { color: C.red },
+  badgeDone: { backgroundColor: 'rgba(61,190,122,0.15)' },
+  badgeTextDone: { color: C.green },
 
   passenger: { fontSize: 18, fontWeight: '700', color: C.text },
   email:     { fontSize: 12, color: C.textMuted, marginTop: 2, marginBottom: 10 },
@@ -278,6 +334,7 @@ const s = StyleSheet.create({
   },
   notasLabel: { fontSize: 11, color: C.textMuted, fontWeight: '600', marginBottom: 2 },
   notasText:  { fontSize: 13, color: C.textSub },
+  finalizadoText: { fontSize: 13, color: C.textSub, marginTop: 10, fontStyle: 'italic' },
 
   actionsRow: { flexDirection: 'row', gap: 12, marginTop: 18 },
   actionBtn: {
@@ -304,3 +361,4 @@ const s = StyleSheet.create({
   },
   dismissText: { color: C.textSub, fontWeight: '600', fontSize: 13 },
 });
+}

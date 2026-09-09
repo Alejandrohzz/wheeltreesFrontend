@@ -1,7 +1,8 @@
+import { useAppTheme } from '@/contexts/ThemeContext';
 import { TipoVehiculo } from '@/services/types';
 import { actualizarVehiculo, crearVehiculo, listarVehiculos, VehiculoRequest } from '@/services/vehiculos';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -15,7 +16,7 @@ import {
   View,
 } from 'react-native';
 
-const C = {
+const DARK_C = {
   bg:          '#131517',
   surface:     '#1E2126',
   border:      '#2E343C',
@@ -26,12 +27,26 @@ const C = {
   error:       '#E05C5C',
 };
 
+const LIGHT_C = {
+  bg: '#F5F7F8',
+  surface: '#FFFFFF',
+  border: '#DDE1E6',
+  borderFocus: '#4A90D9',
+  text: '#11181C',
+  textMuted: '#7A8593',
+  accent: '#4A90D9',
+  error: '#E05C5C',
+};
+
 const TIPOS: { value: TipoVehiculo; label: string; icon: string }[] = [
   { value: 'MOTO',  label: 'Moto',  icon: '🏍️' },
   { value: 'CARRO', label: 'Carro', icon: '🚗' },
 ];
 
 export default function VehicleFormScreen() {
+  const { isDark } = useAppTheme();
+  const C = isDark ? DARK_C : LIGHT_C;
+  const s = useMemo(() => createStyles(C), [C]);
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const esEdicion = !!id;
@@ -129,6 +144,30 @@ export default function VehicleFormScreen() {
     );
   }
 
+  function Field(props: {
+    label: string;
+    value: string;
+    onChangeText: (v: string) => void;
+    placeholder?: string;
+    keyboardType?: 'default' | 'number-pad';
+    autoCapitalize?: 'none' | 'characters' | 'words' | 'sentences';
+  }) {
+    return (
+      <View style={s.fieldWrap}>
+        <Text style={s.label}>{props.label}</Text>
+        <TextInput
+          style={s.input}
+          value={props.value}
+          onChangeText={props.onChangeText}
+          placeholder={props.placeholder}
+          placeholderTextColor={C.textMuted}
+          keyboardType={props.keyboardType ?? 'default'}
+          autoCapitalize={props.autoCapitalize ?? 'sentences'}
+        />
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={s.root}>
       <View style={s.header}>
@@ -186,31 +225,8 @@ export default function VehicleFormScreen() {
   );
 }
 
-function Field(props: {
-  label: string;
-  value: string;
-  onChangeText: (v: string) => void;
-  placeholder?: string;
-  keyboardType?: 'default' | 'number-pad';
-  autoCapitalize?: 'none' | 'characters' | 'words' | 'sentences';
-}) {
-  return (
-    <View style={s.fieldWrap}>
-      <Text style={s.label}>{props.label}</Text>
-      <TextInput
-        style={s.input}
-        value={props.value}
-        onChangeText={props.onChangeText}
-        placeholder={props.placeholder}
-        placeholderTextColor={C.textMuted}
-        keyboardType={props.keyboardType ?? 'default'}
-        autoCapitalize={props.autoCapitalize ?? 'sentences'}
-      />
-    </View>
-  );
-}
-
-const s = StyleSheet.create({
+function createStyles(C: any) {
+  return StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   centerBox: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
@@ -272,3 +288,4 @@ const s = StyleSheet.create({
   },
   saveText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
 });
+}

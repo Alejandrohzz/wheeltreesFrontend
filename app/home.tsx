@@ -1,3 +1,4 @@
+import { useAppTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { getRoute, LatLng, RouteInfo } from '@/services/directions';
 import { PlaceLatLng } from '@/services/places';
@@ -16,10 +17,10 @@ import {
   listarViajes,
 } from '@/services/viajes';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from "expo-router/react-navigation";
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -34,7 +35,7 @@ import {
   View,
 } from 'react-native';
 
-const C = {
+const DARK_C = {
   bg:          '#131517',
   surface:     '#1E2126',
   border:      '#2E343C',
@@ -43,6 +44,17 @@ const C = {
   accentGreen: '#3DBE7A',
   accent:      '#4A90D9',
   iconMuted:   '#4A5160',
+};
+
+const LIGHT_C = {
+  bg: '#F5F7F8',
+  surface: '#FFFFFF',
+  border: '#DDE1E6',
+  text: '#11181C',
+  textMuted: '#7A8593',
+  accentGreen: '#3DBE7A',
+  accent: '#4A90D9',
+  iconMuted: '#9099A6',
 };
 
 const BOGOTA_FALLBACK: PlaceLatLng = { lat: 4.711, lng: -74.0721 };
@@ -91,8 +103,12 @@ function MapBackground({
   destinoActivo: LatLng | null;
   vehiculoActivo: LatLng | null;
 }) {
+  const { isDark } = useAppTheme();
+  const C = isDark ? DARK_C : LIGHT_C;
+  const s = useMemo(() => createStyles(C), [C]);
+
   if (Platform.OS === 'web') {
-    return <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#1c1c1c' }]} />;
+    return <View style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? '#1c1c1c' : '#F5F7F8' }]} />;
   }
 
   const MapView = require('react-native-maps').default;
@@ -101,9 +117,9 @@ function MapBackground({
   return (
     <MapView
       ref={mapRef}
-      style={StyleSheet.absoluteFillObject}
+      style={StyleSheet.absoluteFill}
       provider={PROVIDER_DEFAULT}
-      customMapStyle={DARK_MAP_STYLE}
+      customMapStyle={isDark ? DARK_MAP_STYLE : []}
       initialRegion={{
         latitude: 4.711,
         longitude: -74.0721,
@@ -234,6 +250,9 @@ function MapBackground({
 }
 
 export default function HomeScreen() {
+  const { isDark } = useAppTheme();
+  const C = isDark ? DARK_C : LIGHT_C;
+  const s = useMemo(() => createStyles(C), [C]);
   const { usuario } = useAuth();
   const router = useRouter();
   const mapRef = useRef<any>(null);
@@ -792,8 +811,8 @@ export default function HomeScreen() {
             />
           </TouchableOpacity>
 
-          {/* NOTIFICACIONES - SOLO CONDUCTOR */}
-          {esConductor && (
+          {/* NOTIFICACIONES - CONDUCTOR (solicitudes) Y PASAJERO (viaje finalizado/cancelado) */}
+          {(esConductor || esPasajero) && (
             <TouchableOpacity
               style={s.bellBtn}
               onPress={() =>
@@ -1308,7 +1327,8 @@ export default function HomeScreen() {
   );
 }
 
-const s = StyleSheet.create({
+function createStyles(C: any) {
+  return StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#1a1a1a',
@@ -1773,3 +1793,4 @@ const s = StyleSheet.create({
     backgroundColor: C.accentGreen,
   },
 });
+}

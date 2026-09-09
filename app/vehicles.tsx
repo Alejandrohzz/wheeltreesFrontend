@@ -1,7 +1,8 @@
+import { useAppTheme } from '@/contexts/ThemeContext';
 import { desactivarVehiculo, listarVehiculos } from '@/services/vehiculos';
 import { Vehiculo } from '@/services/types';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,7 +14,7 @@ import {
   View,
 } from 'react-native';
 
-const C = {
+const DARK_C = {
   bg:        '#131517',
   card:      '#1E2126',
   border:    '#2E343C',
@@ -24,6 +25,19 @@ const C = {
   red:       '#E05C5C',
   badgeBg:   'rgba(138, 99, 210, 0.18)',
   badgeText: '#B79CF0',
+};
+
+const LIGHT_C = {
+  bg: '#F5F7F8',
+  card: '#FFFFFF',
+  border: '#DDE1E6',
+  text: '#11181C',
+  textMuted: '#7A8593',
+  textSub: '#5B6472',
+  accent: '#4A90D9',
+  red: '#E05C5C',
+  badgeBg: 'rgba(138, 99, 210, 0.18)',
+  badgeText: '#7C4FC7',
 };
 
 const TIPO_ICON: Record<string, string> = {
@@ -37,6 +51,9 @@ const TIPO_LABEL: Record<string, string> = {
 };
 
 export default function VehiclesScreen() {
+  const { isDark } = useAppTheme();
+  const C = isDark ? DARK_C : LIGHT_C;
+  const s = useMemo(() => createStyles(C), [C]);
   const router = useRouter();
   const [vehiculos, setVehiculos] = useState<Vehiculo[]>([]);
   const [cargando, setCargando]   = useState(true);
@@ -160,7 +177,8 @@ export default function VehiclesScreen() {
   );
 }
 
-const s = StyleSheet.create({
+function createStyles(C: any) {
+  return StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
 
   header: {
@@ -236,3 +254,4 @@ const s = StyleSheet.create({
   deactivateBtn:  { borderColor: C.red },
   deactivateText: { color: C.red, fontWeight: '700', fontSize: 14 },
 });
+}

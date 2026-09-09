@@ -1,7 +1,8 @@
+import { useAppTheme } from '@/contexts/ThemeContext';
 import { reenviarOtp, registro, verificarEmail } from '@/services/auth';
 import { RolUsuario } from '@/services/types';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -15,7 +16,7 @@ import {
   View,
 } from 'react-native';
 
-const C = {
+const DARK_C = {
   bg:            '#131517',
   surface:       '#1E2126',
   surfaceAlt:    '#252A30',
@@ -32,10 +33,30 @@ const C = {
   error:         '#E05C5C',
 };
 
+const LIGHT_C = {
+  bg: '#F5F7F8',
+  surface: '#FFFFFF',
+  surfaceAlt: '#EDEFF2',
+  border: '#DDE1E6',
+  borderFocus: '#4A90D9',
+  text: '#11181C',
+  textMuted: '#7A8593',
+  textSecondary: '#5B6472',
+  primary: '#131517',
+  primaryText: '#FFFFFF',
+  accent: '#4A90D9',
+  accentGreen: '#3DBE7A',
+  iconMuted: '#9099A6',
+  error: '#E05C5C',
+};
+
 type Field = 'nombre' | 'apellido' | 'email' | 'password' | 'confirm' | 'otp';
 type Step   = 'form' | 'otp';
 
 export default function RegisterScreen() {
+  const { isDark } = useAppTheme();
+  const C = isDark ? DARK_C : LIGHT_C;
+  const s = useMemo(() => createStyles(C), [C]);
   const router = useRouter();
 
   // ── Paso 1: formulario ────────────────────────────────────────────────────
@@ -309,7 +330,8 @@ export default function RegisterScreen() {
   );
 }
 
-const s = StyleSheet.create({
+function createStyles(C: any) {
+  return StyleSheet.create({
   flex:      { flex: 1, backgroundColor: C.bg },
   container: { flexGrow: 1, paddingHorizontal: 28, paddingTop: 80, paddingBottom: 40 },
   title: { fontSize: 28, fontWeight: '700', color: C.text, textAlign: 'center', marginBottom: 8, letterSpacing: -0.3 },
@@ -343,3 +365,4 @@ const s = StyleSheet.create({
   footerText: { fontSize: 14, color: C.textMuted },
   footerLink: { fontSize: 14, fontWeight: '600', color: C.accent },
 });
+}
