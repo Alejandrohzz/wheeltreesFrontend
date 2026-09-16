@@ -1,11 +1,17 @@
 import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 
-const host = Constants.expoConfig?.hostUri?.split(':')[0] ?? 'localhost';
+// IP local de Metro (solo sirve si el celular está en tu misma WiFi que la
+// laptop corriendo `expo start`). Se usa como último recurso.
+const devLanHost = Constants.expoConfig?.hostUri?.split(':')[0] ?? 'localhost';
 
-export const BASE_URL = __DEV__
-  ? `http://${host}:8080`
-  : 'https://tu-backend-produccion.com';
+// EXPO_PUBLIC_API_URL se define en `.env` (o en el perfil de EAS Build) y
+// queda incrustada en el bundle al compilar. Con esto el APK que instalen
+// los usuarios de prueba apunta siempre al backend desplegado en la nube,
+// sin importar en qué red estén ni si tu laptop está prendida.
+export const BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL ??
+  (__DEV__ ? `http://${devLanHost}:8080` : 'https://back-wheeltrees-gggghvctbvhtdfce.westus3-01.azurewebsites.net');
 
 const TOKEN_KEY = 'wt_access_token';
 

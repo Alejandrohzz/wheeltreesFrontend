@@ -1,3 +1,4 @@
+import { useAppTheme } from '@/contexts/ThemeContext';
 import { autocompletePlaces, PlacePrediction } from '@/services/places';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -9,12 +10,21 @@ import {
   View,
 } from 'react-native';
 
-const C = {
+const DARK_C = {
   surface:   '#1E2126',
   border:    '#2E343C',
   text:      '#FFFFFF',
   textMuted: '#6B7785',
   textSub:   '#9BA3AD',
+  accent:    '#4A90D9',
+};
+
+const LIGHT_C = {
+  surface:   '#FFFFFF',
+  border:    '#DDE1E6',
+  text:      '#11181C',
+  textMuted: '#7A8593',
+  textSub:   '#5B6472',
   accent:    '#4A90D9',
 };
 
@@ -35,6 +45,10 @@ export default function PlaceAutocompleteInput({
   onSelectPlace,
   icon,
 }: Props) {
+  const { isDark } = useAppTheme();
+  const C = isDark ? DARK_C : LIGHT_C;
+  const s = getStyles(C);
+
   const [suggestions, setSuggestions] = useState<PlacePrediction[]>([]);
   const [loading, setLoading]         = useState(false);
   const [focused, setFocused]         = useState(false);
@@ -57,11 +71,11 @@ export default function PlaceAutocompleteInput({
       try {
         const results = await autocompletePlaces(value, sessionToken.current);
         setSuggestions(results);
-        if (results.length === 0) {
+        if (__DEV__ && results.length === 0) {
           console.log('[PlaceAutocomplete] Sin resultados para:', value);
         }
       } catch (e: any) {
-        console.log('[PlaceAutocomplete] Error:', e?.message ?? e);
+        if (__DEV__) console.log('[PlaceAutocomplete] Error:', e?.message ?? e);
         setSuggestions([]);
         setError(e?.message ?? 'No se pudieron cargar las sugerencias');
       } finally {
@@ -109,7 +123,6 @@ export default function PlaceAutocompleteInput({
               activeOpacity={0.7}
               onPress={() => handleSelect(item)}
             >
-              <Text style={s.pin}>📍</Text>
               <View style={{ flex: 1 }}>
                 <Text style={s.mainText} numberOfLines={1}>{item.mainText}</Text>
                 {!!item.secondaryText && (
@@ -128,7 +141,7 @@ export default function PlaceAutocompleteInput({
   );
 }
 
-const s = StyleSheet.create({
+const getStyles = (C: typeof DARK_C) => StyleSheet.create({
   wrap: { position: 'relative', zIndex: 10 },
   label: { fontSize: 13, fontWeight: '600', color: C.textMuted, marginBottom: 8 },
 
@@ -164,7 +177,6 @@ const s = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: C.border,
   },
-  pin: { fontSize: 13 },
   mainText: { color: C.text, fontSize: 14, fontWeight: '600' },
   secondaryText: { color: C.textSub, fontSize: 12, marginTop: 2 },
   errorText: { color: '#E05C5C', fontSize: 12, marginTop: 6 },

@@ -11,6 +11,8 @@ export interface VehiculoRequest {
   capacidadPasajeros: number;
   cedulaPropietario:  string;
   fotoVehiculo?:      string;
+  /** El conductor declara que el vehículo tiene todos los papeles al día (SOAT, tecnomecánica, licencia, etc.) */
+  terminosAceptados:  boolean;
 }
 
 /** GET /api/vehiculos/mis-vehiculos — lista los vehículos del conductor autenticado */

@@ -16,6 +16,8 @@ export interface Vehiculo {
   cedulaPropietario:   string;
   fotoVehiculo?:       string | null;
   activo:              boolean;
+  terminosAceptados:   boolean;
+  terminosAceptadosEn?: string | null;
 }
 
 // Debe coincidir con el estado del viaje en el backend

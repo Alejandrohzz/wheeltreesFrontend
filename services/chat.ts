@@ -74,6 +74,13 @@ export async function conectarChat(onConnect: () => void, onError?: (err: string
     return null;
   }
 
+  // Mismo fix que en tracking.ts: evita conexiones duplicadas si esta
+  // función se llama dos veces antes de que se limpie la anterior.
+  if (client) {
+    client.deactivate();
+    client = null;
+  }
+
   const url = wsUrl(token);
   if (__DEV__) console.log('🔌 Conectando chat a', url);
 

@@ -112,13 +112,14 @@ function MapBackground({
   }
 
   const MapView = require('react-native-maps').default;
-  const { Polyline, Marker, Callout, PROVIDER_DEFAULT } = require('react-native-maps');
+  const { Polyline, Marker, Callout, PROVIDER_DEFAULT, PROVIDER_GOOGLE } = require('react-native-maps');
+  const mapProvider = Platform.OS === 'ios' ? PROVIDER_DEFAULT : PROVIDER_GOOGLE;
 
   return (
     <MapView
       ref={mapRef}
       style={StyleSheet.absoluteFill}
-      provider={PROVIDER_DEFAULT}
+      provider={mapProvider}
       customMapStyle={isDark ? DARK_MAP_STYLE : []}
       initialRegion={{
         latitude: 4.711,
@@ -888,7 +889,7 @@ export default function HomeScreen() {
             {finalizandoViaje ? (
               <ActivityIndicator color="#0A0A0A" size="small" />
             ) : (
-              <Text style={s.finalizarPillText}>🏁 Finalizar viaje</Text>
+              <Text style={s.finalizarPillText}>Finalizar viaje</Text>
             )}
           </TouchableOpacity>
         )}
@@ -1210,7 +1211,7 @@ export default function HomeScreen() {
                       <Text
                         style={s.reservaOkText}
                       >
-                        ✓ ¡Reserva creada con éxito!
+                        ¡Reserva creada con éxito!
                       </Text>
 
                       <TouchableOpacity

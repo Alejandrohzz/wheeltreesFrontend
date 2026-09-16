@@ -43,6 +43,16 @@ export async function conectarTracking(onConnect: () => void, onError?: (err: st
     return null;
   }
 
+  // Si ya había un cliente activo (p. ej. porque el efecto que llama a esta
+  // función se disparó dos veces sin que se alcanzara a limpiar el
+  // anterior), lo desactivamos primero. Sin esto, quedaban dos sockets
+  // reintentando conexión en paralelo cada 3s indefinidamente, lo cual
+  // terminaba disparando un 429 (demasiadas conexiones) del lado de Azure.
+  if (client) {
+    client.deactivate();
+    client = null;
+  }
+
   const url = wsUrl(token);
   if (__DEV__) console.log('🔌 Conectando tracking a', url);
 

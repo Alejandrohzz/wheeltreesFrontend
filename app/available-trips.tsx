@@ -80,12 +80,13 @@ function AvailableTripsMap({
   }
 
   const MapView = require('react-native-maps').default;
-  const { Polyline, Marker, Callout, PROVIDER_DEFAULT } = require('react-native-maps');
+  const { Polyline, Marker, Callout, PROVIDER_DEFAULT, PROVIDER_GOOGLE } = require('react-native-maps');
+  const mapProvider = Platform.OS === 'ios' ? PROVIDER_DEFAULT : PROVIDER_GOOGLE;
 
   return (
     <MapView
       style={StyleSheet.absoluteFill}
-      provider={PROVIDER_DEFAULT}
+      provider={mapProvider}
       customMapStyle={isDark ? DARK_MAP_STYLE : []}
       initialRegion={{
         latitude: 4.711,

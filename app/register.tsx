@@ -186,8 +186,8 @@ export default function RegisterScreen() {
             </View>
           </View>
 
-          {!!error && <View style={s.errorBox}><Text style={s.errorText}>⚠ {error}</Text></View>}
-          {!!exito && <View style={s.exitoBox}><Text style={s.exitoText}>✓ {exito}</Text></View>}
+          {!!error && <View style={s.errorBox}><Text style={s.errorText}>{error}</Text></View>}
+          {!!exito && <View style={s.exitoBox}><Text style={s.exitoText}>{exito}</Text></View>}
 
           <TouchableOpacity
             style={[s.registerBtn, cargando && s.btnDisabled]}
@@ -304,7 +304,7 @@ export default function RegisterScreen() {
           </View>
         </View>
 
-        {!!error && <View style={s.errorBox}><Text style={s.errorText}>⚠ {error}</Text></View>}
+        {!!error && <View style={s.errorBox}><Text style={s.errorText}>{error}</Text></View>}
 
         <TouchableOpacity
           style={[s.registerBtn, cargando && s.btnDisabled]}

@@ -45,7 +45,13 @@ function AppShell() {
         <Stack.Screen name="publish-trip" options={{ headerShown: false, presentation: 'modal' }} />
         <Stack.Screen name="chats" options={{ headerShown: false }} />
         <Stack.Screen name="chat"  options={{ headerShown: false }} />
+        <Stack.Screen name="notifications" options={{ headerShown: false }} />
+        <Stack.Screen name="my-reservations" options={{ headerShown: false }} />
         <Stack.Screen name="my-trips" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="start-trip"
+          options={{ headerShown: false, gestureEnabled: false, fullScreenGestureEnabled: false }}
+        />
         <Stack.Screen name="available-trips" options={{ headerShown: false }} />
         <Stack.Screen name="trip-in-progress" options={{ headerShown: false }} />
         <Stack.Screen name="trip-tracking" options={{ headerShown: false }} />

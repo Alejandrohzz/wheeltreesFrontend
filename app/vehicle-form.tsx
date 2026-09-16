@@ -43,6 +43,35 @@ const TIPOS: { value: TipoVehiculo; label: string; icon: string }[] = [
   { value: 'CARRO', label: 'Carro', icon: '🚗' },
 ];
 
+// Definido FUERA del componente de pantalla: si se define adentro, React lo
+// recrea como un tipo de componente nuevo en cada render y el TextInput
+// pierde el foco (se cierra el teclado) con cada letra que se escribe.
+function Field(props: {
+  label: string;
+  value: string;
+  onChangeText: (v: string) => void;
+  placeholder?: string;
+  keyboardType?: 'default' | 'number-pad';
+  autoCapitalize?: 'none' | 'characters' | 'words' | 'sentences';
+  colors: typeof DARK_C;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  return (
+    <View style={props.styles.fieldWrap}>
+      <Text style={props.styles.label}>{props.label}</Text>
+      <TextInput
+        style={props.styles.input}
+        value={props.value}
+        onChangeText={props.onChangeText}
+        placeholder={props.placeholder}
+        placeholderTextColor={props.colors.textMuted}
+        keyboardType={props.keyboardType ?? 'default'}
+        autoCapitalize={props.autoCapitalize ?? 'sentences'}
+      />
+    </View>
+  );
+}
+
 export default function VehicleFormScreen() {
   const { isDark } = useAppTheme();
   const C = isDark ? DARK_C : LIGHT_C;
@@ -60,6 +89,7 @@ export default function VehicleFormScreen() {
   const [capacidad, setCapacidad] = useState('');
   const [cedula, setCedula]       = useState('');
   const [fotoVehiculo, setFotoVehiculo] = useState('');
+  const [terminosAceptados, setTerminosAceptados] = useState(false);
 
   const [cargandoDatos, setCargandoDatos] = useState(esEdicion);
   const [guardando, setGuardando]         = useState(false);
@@ -82,6 +112,7 @@ export default function VehicleFormScreen() {
           setCapacidad(String(v.capacidadPasajeros));
           setCedula(v.cedulaPropietario);
           setFotoVehiculo(v.fotoVehiculo ?? '');
+          setTerminosAceptados(!!v.terminosAceptados);
         }
       } catch (e: any) {
         setError(e?.message ?? 'No se pudo cargar el vehículo');
@@ -99,6 +130,7 @@ export default function VehicleFormScreen() {
     if (!color.trim())            return 'El color es obligatorio';
     if (!capacidad.trim() || isNaN(Number(capacidad))) return 'La capacidad no es válida';
     if (!cedula.trim())           return 'La cédula del propietario es obligatoria';
+    if (!terminosAceptados)       return 'Debes aceptar los términos y condiciones para continuar';
     return null;
   };
 
@@ -117,6 +149,7 @@ export default function VehicleFormScreen() {
       capacidadPasajeros: Number(capacidad),
       cedulaPropietario: cedula.trim(),
       ...(fotoVehiculo.trim() ? { fotoVehiculo: fotoVehiculo.trim() } : {}),
+      terminosAceptados,
     };
 
     setGuardando(true);
@@ -141,30 +174,6 @@ export default function VehicleFormScreen() {
           <ActivityIndicator color={C.accent} />
         </View>
       </SafeAreaView>
-    );
-  }
-
-  function Field(props: {
-    label: string;
-    value: string;
-    onChangeText: (v: string) => void;
-    placeholder?: string;
-    keyboardType?: 'default' | 'number-pad';
-    autoCapitalize?: 'none' | 'characters' | 'words' | 'sentences';
-  }) {
-    return (
-      <View style={s.fieldWrap}>
-        <Text style={s.label}>{props.label}</Text>
-        <TextInput
-          style={s.input}
-          value={props.value}
-          onChangeText={props.onChangeText}
-          placeholder={props.placeholder}
-          placeholderTextColor={C.textMuted}
-          keyboardType={props.keyboardType ?? 'default'}
-          autoCapitalize={props.autoCapitalize ?? 'sentences'}
-        />
-      </View>
     );
   }
 
@@ -198,21 +207,37 @@ export default function VehicleFormScreen() {
             ))}
           </View>
 
-          <Field label="Placa" value={placa} onChangeText={setPlaca} autoCapitalize="characters" placeholder="ABC12D" />
-          <Field label="Marca" value={marca} onChangeText={setMarca} placeholder="Yamaha" />
-          <Field label="Modelo" value={modelo} onChangeText={setModelo} placeholder="Faz" />
-          <Field label="Año" value={anio} onChangeText={setAnio} keyboardType="number-pad" placeholder="2026" />
-          <Field label="Color" value={color} onChangeText={setColor} placeholder="Rojo" />
-          <Field label="Capacidad (pasajeros)" value={capacidad} onChangeText={setCapacidad} keyboardType="number-pad" placeholder="1" />
-          <Field label="Cédula del propietario" value={cedula} onChangeText={setCedula} keyboardType="number-pad" placeholder="3134004216" />
-          <Field label="Foto del vehículo (URL, opcional)" value={fotoVehiculo} onChangeText={setFotoVehiculo} placeholder="https://..." autoCapitalize="none" />
+          <Field colors={C} styles={s} label="Placa" value={placa} onChangeText={setPlaca} autoCapitalize="characters" placeholder="ABC12D" />
+          <Field colors={C} styles={s} label="Marca" value={marca} onChangeText={setMarca} placeholder="Yamaha" />
+          <Field colors={C} styles={s} label="Modelo" value={modelo} onChangeText={setModelo} placeholder="Faz" />
+          <Field colors={C} styles={s} label="Año" value={anio} onChangeText={setAnio} keyboardType="number-pad" placeholder="2026" />
+          <Field colors={C} styles={s} label="Color" value={color} onChangeText={setColor} placeholder="Rojo" />
+          <Field colors={C} styles={s} label="Capacidad (pasajeros)" value={capacidad} onChangeText={setCapacidad} keyboardType="number-pad" placeholder="1" />
+          <Field colors={C} styles={s} label="Cédula del propietario" value={cedula} onChangeText={setCedula} keyboardType="number-pad" placeholder="3134004216" />
+          <Field colors={C} styles={s} label="Foto del vehículo (URL, opcional)" value={fotoVehiculo} onChangeText={setFotoVehiculo} placeholder="https://..." autoCapitalize="none" />
+
+          <TouchableOpacity
+            style={s.termsRow}
+            onPress={() => setTerminosAceptados((prev) => !prev)}
+            activeOpacity={0.7}
+          >
+            <View style={[s.checkbox, terminosAceptados && s.checkboxChecked]}>
+              {terminosAceptados && <Text style={s.checkboxMark}>✓</Text>}
+            </View>
+            <Text style={s.termsText}>
+              Declaro que el vehículo tiene todos sus documentos al día (SOAT vigente, revisión
+              tecnomecánica cuando aplique, licencia de conducción vigente y tarjeta de
+              propiedad), y acepto los{' '}
+              <Text style={s.termsLink}>términos y condiciones</Text> de uso de la plataforma.
+            </Text>
+          </TouchableOpacity>
 
           {!!error && <Text style={s.errorText}>{error}</Text>}
 
           <TouchableOpacity
-            style={[s.saveBtn, guardando && { opacity: 0.6 }]}
+            style={[s.saveBtn, (guardando || !terminosAceptados) && { opacity: 0.6 }]}
             onPress={handleGuardar}
-            disabled={guardando}
+            disabled={guardando || !terminosAceptados}
             activeOpacity={0.8}
           >
             {guardando
@@ -278,6 +303,28 @@ function createStyles(C: any) {
   },
 
   errorText: { color: C.error, fontSize: 13, marginBottom: 12, textAlign: 'center' },
+
+  termsRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginTop: 4,
+    marginBottom: 16,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: C.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  checkboxChecked: { backgroundColor: C.accent, borderColor: C.accent },
+  checkboxMark: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  termsText: { flex: 1, fontSize: 13, lineHeight: 19, color: C.textMuted },
+  termsLink: { color: C.accent, fontWeight: '600' },
 
   saveBtn: {
     backgroundColor: C.accent,

@@ -1,14 +1,9 @@
+import { SlideToConfirm } from '@/components/atoms';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { getRoute, LatLng } from '@/services/directions';
-import {
-  conectarTracking,
-  desconectarTracking,
-  obtenerUbicacion,
-  suscribirseAUbicacion,
-  UbicacionEvento,
-} from '@/services/tracking';
+import { guardarInicioViaje } from '@/services/tripTimer';
 import { Viaje } from '@/services/types';
-import { detalleViaje } from '@/services/viajes';
+import { detalleViaje, iniciarViaje } from '@/services/viajes';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -61,29 +56,20 @@ const DARK_MAP_STYLE = [
   { featureType: 'landscape',    elementType: 'geometry', stylers: [{ color: '#1c1c1c' }] },
 ];
 
-const ESTADO_LABEL: Record<string, { label: string; color: string }> = {
-  PROGRAMADO: { label: 'Esperando al conductor', color: DARK_C.amber },
-  EN_CURSO:   { label: 'En camino',              color: DARK_C.green },
-  COMPLETADO: { label: 'Viaje finalizado',       color: DARK_C.accent },
-  CANCELADO:  { label: 'Viaje cancelado',        color: DARK_C.red },
-};
-
-function TrackingMap({
+function RouteMap({
   mapRef,
   origen,
   destino,
-  vehiculo,
   routeCoords,
+  isDark,
 }: {
   mapRef: React.RefObject<any>;
   origen: LatLng | null;
   destino: LatLng | null;
-  vehiculo: LatLng | null;
   routeCoords: LatLng[];
+  isDark: boolean;
 }) {
-  const { isDark } = useAppTheme();
   const C = isDark ? DARK_C : LIGHT_C;
-  const s = useMemo(() => createStyles(C), [C]);
 
   if (Platform.OS === 'web') {
     return <View style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? '#1c1c1c' : '#F5F7F8' }]} />;
@@ -109,6 +95,14 @@ function TrackingMap({
       showsMyLocationButton={false}
       showsCompass={false}
       toolbarEnabled={false}
+      onLayout={() => {
+        if (routeCoords.length > 1 && mapRef.current) {
+          mapRef.current.fitToCoordinates(routeCoords, {
+            edgePadding: { top: 80, right: 60, bottom: 220, left: 60 },
+            animated: true,
+          });
+        }
+      }}
     >
       {routeCoords.length > 0 && (
         <Polyline coordinates={routeCoords} strokeColor={C.accent} strokeWidth={4} geodesic />
@@ -116,19 +110,11 @@ function TrackingMap({
 
       {origen && <Marker coordinate={origen} pinColor="#9B7BD9" title="Origen" />}
       {destino && <Marker coordinate={destino} pinColor="#3DBE7A" title="Destino" />}
-
-      {vehiculo && (
-        <Marker coordinate={vehiculo} anchor={{ x: 0.5, y: 0.5 }} title="Conductor">
-          <View style={s.carMarker}>
-            <Text style={{ fontSize: 20 }}>🚗</Text>
-          </View>
-        </Marker>
-      )}
     </MapView>
   );
 }
 
-export default function TripTrackingScreen() {
+export default function StartTripScreen() {
   const { isDark } = useAppTheme();
   const C = isDark ? DARK_C : LIGHT_C;
   const s = useMemo(() => createStyles(C), [C]);
@@ -136,24 +122,19 @@ export default function TripTrackingScreen() {
   const { viajeId } = useLocalSearchParams<{ viajeId: string }>();
   const mapRef = useRef<any>(null);
 
-  const [viaje, setViaje]           = useState<Viaje | null>(null);
-  const [cargando, setCargando]     = useState(true);
-  const [error, setError]           = useState('');
-  const [evento, setEvento]         = useState<UbicacionEvento | null>(null);
+  const [viaje, setViaje]       = useState<Viaje | null>(null);
+  const [cargando, setCargando] = useState(true);
+  const [error, setError]       = useState('');
   const [routeCoords, setRouteCoords] = useState<LatLng[]>([]);
-  const finalizadoAvisado = useRef(false);
+  const [iniciando, setIniciando] = useState(false);
 
   const cargar = useCallback(async () => {
     if (!viajeId) return;
     setCargando(true);
     setError('');
     try {
-      const [v, ubic] = await Promise.all([
-        detalleViaje(viajeId),
-        obtenerUbicacion(viajeId).catch(() => null),
-      ]);
+      const v = await detalleViaje(viajeId);
       setViaje(v);
-      if (ubic) setEvento(ubic);
 
       if (v.origenLat != null && v.origenLng != null && v.destinoLat != null && v.destinoLng != null) {
         try {
@@ -175,72 +156,25 @@ export default function TripTrackingScreen() {
 
   useEffect(() => { cargar(); }, [cargar]);
 
-  // Conexión en vivo: escucha posiciones y cambios de estado del viaje.
-  useEffect(() => {
-    if (!viajeId) return;
-    let unsuscribir: (() => void) | null = null;
-    let activo = true;
-
-    conectarTracking(
-      () => {
-        if (!activo) return;
-        unsuscribir = suscribirseAUbicacion(viajeId, (e) => {
-          setEvento(e);
-          if (e.estado !== 'EN_CURSO') {
-            setViaje((prev) => (prev ? { ...prev, estado: e.estado as any } : prev));
-          }
-        });
-      },
-      (err) => { if (activo) setError(err); },
-    );
-
-    return () => {
-      activo = false;
-      unsuscribir?.();
-      desconectarTracking();
-    };
-  }, [viajeId]);
-
-  // Centra el mapa cada vez que llega una posición nueva del conductor.
-  useEffect(() => {
-    if (evento?.lat != null && evento?.lng != null && mapRef.current) {
-      mapRef.current.animateToRegion(
-        {
-          latitude: evento.lat,
-          longitude: evento.lng,
-          latitudeDelta: 0.02,
-          longitudeDelta: 0.02,
-        },
-        500,
-      );
-    }
-  }, [evento?.lat, evento?.lng]);
-
-  // Cuando el viaje termina o se cancela, avisa una sola vez.
-  useEffect(() => {
-    const estadoActual = evento?.estado ?? viaje?.estado;
-    if (!estadoActual || finalizadoAvisado.current) return;
-    if (estadoActual === 'COMPLETADO' || estadoActual === 'CANCELADO') {
-      finalizadoAvisado.current = true;
-      Alert.alert(
-        estadoActual === 'COMPLETADO' ? 'Viaje finalizado' : 'Viaje cancelado',
-        estadoActual === 'COMPLETADO'
-          ? 'El conductor marcó el viaje como completado.'
-          : 'El conductor canceló este viaje.',
-        [{ text: 'OK', onPress: () => router.back() }],
-      );
-    }
-  }, [evento?.estado, viaje?.estado, router]);
-
   const origen  = viaje?.origenLat != null && viaje?.origenLng != null
     ? { latitude: viaje.origenLat, longitude: viaje.origenLng } : null;
   const destino = viaje?.destinoLat != null && viaje?.destinoLng != null
     ? { latitude: viaje.destinoLat, longitude: viaje.destinoLng } : null;
-  const vehiculo = evento?.lat != null && evento?.lng != null
-    ? { latitude: evento.lat, longitude: evento.lng } : null;
 
-  const estadoActual = evento?.estado ?? viaje?.estado ?? 'PROGRAMADO';
-  const infoEstado = ESTADO_LABEL[estadoActual] ?? ESTADO_LABEL.PROGRAMADO;
+  const handleIniciar = async () => {
+    if (!viajeId) return;
+    setIniciando(true);
+    try {
+      await iniciarViaje(viajeId);
+      // Guardamos el momento real de inicio para el contador de minutos
+      // en "Viaje en curso".
+      await guardarInicioViaje(viajeId);
+      router.replace('/home');
+    } catch (e: any) {
+      setIniciando(false);
+      Alert.alert('No se pudo iniciar el viaje', e?.message ?? 'Inténtalo de nuevo');
+    }
+  };
 
   return (
     <SafeAreaView style={s.root}>
@@ -249,7 +183,7 @@ export default function TripTrackingScreen() {
           <Text style={s.backIcon}>←</Text>
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={s.headerTitle}>Seguimiento en vivo</Text>
+          <Text style={s.headerTitle}>Iniciar viaje</Text>
           {!!viaje && (
             <Text style={s.headerSub} numberOfLines={1}>
               {viaje.origenDescripcion} → {viaje.destinoDescripcion}
@@ -275,40 +209,48 @@ export default function TripTrackingScreen() {
 
       {!cargando && !error && (
         <View style={{ flex: 1 }}>
-          <TrackingMap
+          <RouteMap
             mapRef={mapRef}
             origen={origen}
             destino={destino}
-            vehiculo={vehiculo}
             routeCoords={routeCoords}
+            isDark={isDark}
           />
 
           <View style={s.bottomCard}>
-            <View style={s.estadoRow}>
-              <View style={[s.estadoDot, { backgroundColor: infoEstado.color }]} />
-              <Text style={[s.estadoText, { color: infoEstado.color }]}>{infoEstado.label}</Text>
-            </View>
-
             {!!viaje && (
               <>
-                <Text style={s.conductorNombre}>{viaje.conductorNombre}</Text>
-                <Text style={s.vehiculoInfo}>
-                  {viaje.vehiculoDescripcion} · {viaje.vehiculoPlaca}
+                <Text style={s.ruta}>{viaje.origenDescripcion} → {viaje.destinoDescripcion}</Text>
+                <Text style={s.detail}>
+                  {new Date(viaje.fechaHoraSalida).toLocaleString('es-CO', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  })}
+                </Text>
+                <Text style={s.detail}>
+                  {viaje.vehiculoDescripcion} · {viaje.cuposDisponibles}/{viaje.cuposTotales} cupos libres
                 </Text>
               </>
             )}
 
-            {estadoActual === 'PROGRAMADO' && (
-              <Text style={s.hint}>El mapa se activará apenas el conductor inicie el viaje.</Text>
-            )}
-            {estadoActual === 'EN_CURSO' && !vehiculo && (
-              <Text style={s.hint}>Esperando la primera posición del conductor…</Text>
-            )}
-            {estadoActual === 'EN_CURSO' && evento?.actualizadaEn && (
-              <Text style={s.hint}>
-                Última actualización: {new Date(evento.actualizadaEn).toLocaleTimeString()}
-              </Text>
-            )}
+            <View style={s.slideWrap}>
+              <SlideToConfirm
+                label="Desliza para iniciar viaje →"
+                confirmingLabel="Iniciando…"
+                icon="🚗"
+                loading={iniciando}
+                onConfirm={handleIniciar}
+                colors={{
+                  track: 'transparent',
+                  trackBorder: C.green,
+                  fill: 'rgba(61,190,122,0.18)',
+                  thumb: C.green,
+                  thumbIcon: '#0A0A0A',
+                  label: C.green,
+                  disabledTrack: 'transparent',
+                }}
+              />
+            </View>
           </View>
         </View>
       )}
@@ -338,22 +280,14 @@ function createStyles(C: any) {
   },
   retryText: { color: C.accent, fontWeight: '600' },
 
-  carMarker: {
-    width: 34, height: 34, borderRadius: 17,
-    backgroundColor: C.card, borderWidth: 2, borderColor: C.accent,
-    alignItems: 'center', justifyContent: 'center',
-  },
-
   bottomCard: {
     position: 'absolute', left: 16, right: 16, bottom: 16,
-    backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border,
-    padding: 16, gap: 4,
+    backgroundColor: C.card, borderRadius: 18, borderWidth: 1, borderColor: C.border,
+    padding: 18, gap: 4,
   },
-  estadoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
-  estadoDot: { width: 8, height: 8, borderRadius: 4 },
-  estadoText: { fontSize: 13, fontWeight: '700' },
-  conductorNombre: { fontSize: 16, fontWeight: '700', color: C.text },
-  vehiculoInfo: { fontSize: 13, color: C.textSub, marginTop: 2 },
-  hint: { fontSize: 12, color: C.textMuted, marginTop: 6 },
+  ruta:   { fontSize: 16, fontWeight: '700', color: C.text },
+  detail: { fontSize: 13, color: C.textSub, marginTop: 2 },
+
+  slideWrap: { marginTop: 14 },
 });
 }

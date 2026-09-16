@@ -368,7 +368,7 @@ export default function ProfileScreen() {
                       <ActivityIndicator size="small" color={C.accentGreen} />
                     ) : (
                       <Text style={[s.rolBtnText, activo && s.rolBtnTextActive]}>
-                        {r === 'PASAJERO' ? '🎒 Pasajero' : '🚗 Conductor'}
+                        {r === 'PASAJERO' ? 'Pasajero' : 'Conductor'}
                       </Text>
                     )}
                   </TouchableOpacity>

@@ -74,7 +74,8 @@ function RouteMap({ coordinates }: { coordinates: LatLng[] }) {
     return <View style={[staticStyles.mapPreview, { backgroundColor: isDark ? '#1c1c1c' : '#F5F7F8' }]} />;
   }
   const MapView = require('react-native-maps').default;
-  const { Polyline, Marker, PROVIDER_DEFAULT } = require('react-native-maps');
+  const { Polyline, Marker, PROVIDER_DEFAULT, PROVIDER_GOOGLE } = require('react-native-maps');
+  const mapProvider = Platform.OS === 'ios' ? PROVIDER_DEFAULT : PROVIDER_GOOGLE;
 
   const lats = coordinates.map((c) => c.latitude);
   const lngs = coordinates.map((c) => c.longitude);
@@ -88,7 +89,7 @@ function RouteMap({ coordinates }: { coordinates: LatLng[] }) {
   return (
     <MapView
       style={staticStyles.mapPreview}
-      provider={PROVIDER_DEFAULT}
+      provider={mapProvider}
       customMapStyle={isDark ? DARK_MAP_STYLE : []}
       region={region}
       scrollEnabled={false}
@@ -353,7 +354,7 @@ export default function PublishTripScreen() {
                         setRuta(null);
                       }}
                     >
-                      <Text style={s.quickChipText}>🏠 Mi casa</Text>
+                      <Text style={s.quickChipText}>Mi casa</Text>
                     </TouchableOpacity>
                   )}
                   {!!perfil?.direccionTrabajo && (
@@ -366,7 +367,7 @@ export default function PublishTripScreen() {
                         setRuta(null);
                       }}
                     >
-                      <Text style={s.quickChipText}>💼 Mi trabajo</Text>
+                      <Text style={s.quickChipText}>Mi trabajo</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -413,7 +414,7 @@ export default function PublishTripScreen() {
                         setRuta(null);
                       }}
                     >
-                      <Text style={s.quickChipText}>🏠 Mi casa</Text>
+                      <Text style={s.quickChipText}>Mi casa</Text>
                     </TouchableOpacity>
                   )}
                   {!!perfil?.direccionTrabajo && (
@@ -426,7 +427,7 @@ export default function PublishTripScreen() {
                         setRuta(null);
                       }}
                     >
-                      <Text style={s.quickChipText}>💼 Mi trabajo</Text>
+                      <Text style={s.quickChipText}>Mi trabajo</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -446,8 +447,8 @@ export default function PublishTripScreen() {
             <View style={s.routeCard}>
               <RouteMap coordinates={ruta.coordinates} />
               <View style={s.routeInfoRow}>
-                <Text style={s.routeInfoText}>📍 {ruta.distanceText}</Text>
-                <Text style={s.routeInfoText}>🕐 {ruta.durationText}</Text>
+                <Text style={s.routeInfoText}>{ruta.distanceText}</Text>
+                <Text style={s.routeInfoText}>{ruta.durationText}</Text>
               </View>
             </View>
           )}

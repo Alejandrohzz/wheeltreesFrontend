@@ -201,7 +201,7 @@ export default function ChatScreen() {
             ListEmptyComponent={
               <View style={s.centerBox}>
                 <Text style={s.emptyText}>
-                  Todavía no hay mensajes.{'\n'}Escribe el primero 👋
+                  Todavía no hay mensajes.{'\n'}Escribe el primero
                 </Text>
               </View>
             }

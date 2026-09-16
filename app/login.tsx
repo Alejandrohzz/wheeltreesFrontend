@@ -227,7 +227,7 @@ export default function LoginScreen() {
         {/* Error message */}
         {!!error && (
           <View style={s.errorBox}>
-            <Text style={s.errorText}>⚠ {error}</Text>
+            <Text style={s.errorText}>{error}</Text>
           </View>
         )}
 

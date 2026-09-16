@@ -1,5 +1,6 @@
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { cancelarReserva, misReservas, Reserva } from '@/services/reservas';
+import { codigoVerificacion } from '@/services/verificationCode';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
@@ -176,6 +177,16 @@ export default function MyReservationsScreen() {
               )}
 
               {r.estado === 'CONFIRMADA' && (
+                <View style={s.codigoBox}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.codigoLabel}>Tu código de verificación</Text>
+                    <Text style={s.codigoHint}>Muéstraselo al conductor al subir</Text>
+                  </View>
+                  <Text style={s.codigoValor}>{codigoVerificacion(r.id)}</Text>
+                </View>
+              )}
+
+              {r.estado === 'CONFIRMADA' && (
                 <TouchableOpacity
                   style={s.chatBtn}
                   activeOpacity={0.7}
@@ -186,7 +197,7 @@ export default function MyReservationsScreen() {
                     })
                   }
                 >
-                  <Text style={s.chatBtnText}>💬 Chatear con {r.conductorNombre}</Text>
+                  <Text style={s.chatBtnText}>Chatear con {r.conductorNombre}</Text>
                 </TouchableOpacity>
               )}
 
@@ -198,7 +209,7 @@ export default function MyReservationsScreen() {
                     router.push({ pathname: '/trip-tracking', params: { viajeId: r.viajeId } })
                   }
                 >
-                  <Text style={s.trackBtnText}>📍 Ver seguimiento en vivo</Text>
+                  <Text style={s.trackBtnText}>Ver seguimiento en vivo</Text>
                 </TouchableOpacity>
               )}
 
@@ -289,6 +300,15 @@ function createStyles(C: any) {
   origen: { fontSize: 17, fontWeight: '700', color: C.text },
   detail: { fontSize: 13, color: C.textSub, marginTop: 4 },
   notas:  { fontSize: 13, color: C.textMuted, marginTop: 8, fontStyle: 'italic' },
+
+  codigoBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: `${C.accent}15`, borderWidth: 1, borderColor: C.accent,
+    borderRadius: 12, padding: 12, marginTop: 12,
+  },
+  codigoLabel: { fontSize: 12, fontWeight: '700', color: C.text },
+  codigoHint:  { fontSize: 11, color: C.textSub, marginTop: 1 },
+  codigoValor: { fontSize: 22, fontWeight: '800', color: C.accent, letterSpacing: 3 },
 
   trackBtn: {
     borderWidth: 1,

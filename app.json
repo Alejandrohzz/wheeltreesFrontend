@@ -18,7 +18,12 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyAsWUj6iPBpn9qgsEOqbg5z7Onjpg2Va50"
+        }
+      }
     },
     "web": {
       "output": "static",
@@ -42,6 +47,14 @@
         "expo-local-authentication",
         {
           "faceIDPermission": "Permitir a WheelTrees usar Face ID para iniciar sesión."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "WheelTrees necesita tu ubicación para mostrarte en el mapa y trackear el viaje en tiempo real.",
+          "locationWhenInUsePermission": "WheelTrees necesita tu ubicación para mostrarte en el mapa y trackear el viaje en tiempo real.",
+          "isAndroidBackgroundLocationEnabled": true
         }
       ]
     ],

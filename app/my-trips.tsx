@@ -1,5 +1,5 @@
 import { useAppTheme } from '@/contexts/ThemeContext';
-import { cancelarViaje, iniciarViaje, listarMisViajes } from '@/services/viajes';
+import { cancelarViaje, listarMisViajes } from '@/services/viajes';
 import { Viaje } from '@/services/types';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
@@ -74,22 +74,6 @@ export default function MyTripsScreen() {
 
   useFocusEffect(useCallback(() => { cargar(); }, [cargar]));
 
-  const handleIniciar = async (viaje: Viaje) => {
-    setProcesandoId(viaje.id);
-    try {
-      await iniciarViaje(viaje.id);
-      // Al confirmar/iniciar el viaje con los pasajeros ya reservados,
-      // se vuelve al home: ahí mismo se activa el seguimiento en vivo
-      // (se empieza a compartir la ubicación) y aparece el botón de
-      // finalizar viaje, sin tener que entrar a otra pantalla.
-      router.replace('/home');
-    } catch (e: any) {
-      Alert.alert('No se pudo iniciar el viaje', e?.message ?? 'Inténtalo de nuevo');
-    } finally {
-      setProcesandoId(null);
-    }
-  };
-
   const handleCancelar = (viaje: Viaje) => {
     Alert.alert(
       'Cancelar viaje',
@@ -160,13 +144,13 @@ export default function MyTripsScreen() {
 
               <Text style={s.ruta}>{v.origenDescripcion} → {v.destinoDescripcion}</Text>
               <Text style={s.detail}>
-                🗓️ {new Date(v.fechaHoraSalida).toLocaleString('es-CO', {
+                {new Date(v.fechaHoraSalida).toLocaleString('es-CO', {
                   dateStyle: 'medium',
                   timeStyle: 'short',
                 })}
               </Text>
               <Text style={s.detail}>
-                🚗 {v.vehiculoDescripcion} · {v.cuposDisponibles}/{v.cuposTotales} cupos libres
+                {v.vehiculoDescripcion} · {v.cuposDisponibles}/{v.cuposTotales} cupos libres
               </Text>
 
               {v.estado === 'PROGRAMADO' && (
@@ -183,11 +167,11 @@ export default function MyTripsScreen() {
                     style={[s.actionBtn, s.startBtn, procesando && s.disabled]}
                     activeOpacity={0.7}
                     disabled={procesando}
-                    onPress={() => handleIniciar(v)}
+                    onPress={() => router.push({ pathname: '/start-trip', params: { viajeId: v.id } })}
                   >
                     {procesando
                       ? <ActivityIndicator color="#0A0A0A" size="small" />
-                      : <Text style={s.startText}>🚀 Iniciar viaje</Text>}
+                      : <Text style={s.startText}>🗺️ Ver ruta e iniciar</Text>}
                   </TouchableOpacity>
                 </View>
               )}
@@ -198,7 +182,7 @@ export default function MyTripsScreen() {
                   activeOpacity={0.7}
                   onPress={() => router.push({ pathname: '/trip-in-progress', params: { viajeId: v.id } })}
                 >
-                  <Text style={s.manageText}>📍 Gestionar viaje en curso</Text>
+                  <Text style={s.manageText}>Gestionar viaje en curso</Text>
                 </TouchableOpacity>
               )}
             </View>
