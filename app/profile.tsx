@@ -418,12 +418,7 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* ── REFERIDOS ──────────────────────────────────────────────────── */}
-        <Section
-          items={[
-            { icon: '🎁', label: 'Referrals and rewards', onPress: () => {} },
-          ]}
-        />
+      
 
         {/* ── APARIENCIA ─────────────────────────────────────────────────── */}
         <View style={s.section}>
@@ -459,14 +454,7 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* ── AJUSTES ────────────────────────────────────────────────────── */}
-        <Section
-          title="Settings and Preferences"
-          items={[
-            { icon: '🔔', label: 'Notifications', onPress: () => {} },
-            { icon: '🌐', label: 'Language',      onPress: () => {} },
-          ]}
-        />
+       
 
         {/* ── SEGURIDAD / BIOMETRÍA ──────────────────────────────────────── */}
         {biometricDisponible && (

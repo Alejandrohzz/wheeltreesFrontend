@@ -23,7 +23,17 @@
         "googleMaps": {
           "apiKey": "AIzaSyAsWUj6iPBpn9qgsEOqbg5z7Onjpg2Va50"
         }
-      }
+      },
+      "permissions": [
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
+      ],
+      "package": "com.alejandrohz.Login"
     },
     "web": {
       "output": "static",

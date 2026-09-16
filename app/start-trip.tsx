@@ -237,7 +237,7 @@ export default function StartTripScreen() {
               <SlideToConfirm
                 label="Desliza para iniciar viaje →"
                 confirmingLabel="Iniciando…"
-                icon="🚗"
+                icon=""
                 loading={iniciando}
                 onConfirm={handleIniciar}
                 colors={{

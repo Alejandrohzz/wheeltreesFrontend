@@ -455,7 +455,7 @@ export default function TripInProgressScreen() {
                   })
                 }
               >
-                <Text style={s.contactLinkText}>💬 Escribirle a {r.pasajeroNombre.split(' ')[0]}</Text>
+                <Text style={s.contactLinkText}> Escribirle a {r.pasajeroNombre.split(' ')[0]}</Text>
               </TouchableOpacity>
             </View>
           );

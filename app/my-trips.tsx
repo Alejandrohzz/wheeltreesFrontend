@@ -171,7 +171,7 @@ export default function MyTripsScreen() {
                   >
                     {procesando
                       ? <ActivityIndicator color="#0A0A0A" size="small" />
-                      : <Text style={s.startText}>🗺️ Ver ruta e iniciar</Text>}
+                      : <Text style={s.startText}> Ver ruta e iniciar</Text>}
                   </TouchableOpacity>
                 </View>
               )}

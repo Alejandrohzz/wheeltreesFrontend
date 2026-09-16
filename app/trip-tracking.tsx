@@ -120,7 +120,7 @@ function TrackingMap({
       {vehiculo && (
         <Marker coordinate={vehiculo} anchor={{ x: 0.5, y: 0.5 }} title="Conductor">
           <View style={s.carMarker}>
-            <Text style={{ fontSize: 20 }}>🚗</Text>
+            <Text style={{ fontSize: 20 }}></Text>
           </View>
         </Marker>
       )}
