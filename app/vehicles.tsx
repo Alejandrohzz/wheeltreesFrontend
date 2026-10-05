@@ -1,30 +1,33 @@
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { desactivarVehiculo, listarVehiculos } from '@/services/vehiculos';
 import { Vehiculo } from '@/services/types';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const DARK_C = {
-  bg:        '#131517',
-  card:      '#1E2126',
-  border:    '#2E343C',
-  text:      '#FFFFFF',
-  textMuted: '#6B7785',
-  textSub:   '#9BA3AD',
-  accent:    '#4A90D9',
-  red:       '#E05C5C',
-  badgeBg:   'rgba(138, 99, 210, 0.18)',
-  badgeText: '#B79CF0',
+  bg:          '#131517',
+  card:        '#1E2126',
+  border:      '#2E343C',
+  text:        '#FFFFFF',
+  textMuted:   '#6B7785',
+  textSub:     '#9BA3AD',
+  accent:      '#4A90D9',
+  accentGreen: '#3DBE7A',
+  red:         '#E05C5C',
+  warning:     '#E0A93D',
+  badgeBg:     'rgba(61, 190, 122, 0.14)',
 };
 
 const LIGHT_C = {
@@ -35,22 +38,14 @@ const LIGHT_C = {
   textMuted: '#7A8593',
   textSub: '#5B6472',
   accent: '#4A90D9',
+  accentGreen: '#3DBE7A',
   red: '#E05C5C',
-  badgeBg: 'rgba(138, 99, 210, 0.18)',
-  badgeText: '#7C4FC7',
-};
-
-const TIPO_ICON: Record<string, string> = {
-  MOTO: '🏍️',
-  CARRO: '🚗',
-};
-
-const TIPO_LABEL: Record<string, string> = {
-  MOTO: 'Moto',
-  CARRO: 'Carro',
+  warning: '#C98A12',
+  badgeBg: 'rgba(61, 190, 122, 0.14)',
 };
 
 export default function VehiclesScreen() {
+  const { t } = useTranslation();
   const { isDark } = useAppTheme();
   const C = isDark ? DARK_C : LIGHT_C;
   const s = useMemo(() => createStyles(C), [C]);
@@ -66,7 +61,7 @@ export default function VehiclesScreen() {
       const data = await listarVehiculos();
       setVehiculos(data);
     } catch (e: any) {
-      setError(e?.message ?? 'No se pudieron cargar los vehículos');
+      setError(e?.message ?? t('vehicles.errorLoad'));
     } finally {
       setCargando(false);
     }
@@ -80,19 +75,19 @@ export default function VehiclesScreen() {
 
   const handleDesactivar = (v: Vehiculo) => {
     Alert.alert(
-      'Desactivar vehículo',
-      `¿Seguro que quieres desactivar ${v.placa}?`,
+      t('vehicles.deactivateAlertTitle'),
+      t('vehicles.deactivateAlertMsg', { placa: v.placa }),
       [
-        { text: 'Cancelar', style: 'cancel' },
+        { text: t('vehicles.cancel'), style: 'cancel' },
         {
-          text: 'Desactivar',
+          text: t('vehicles.deactivate'),
           style: 'destructive',
           onPress: async () => {
             try {
               await desactivarVehiculo(v.id);
               cargar();
             } catch (e: any) {
-              Alert.alert('Error', e?.message ?? 'No se pudo desactivar el vehículo');
+              Alert.alert(t('vehicles.errorTitle'), e?.message ?? t('vehicles.errorDeactivate'));
             }
           },
         },
@@ -107,13 +102,13 @@ export default function VehiclesScreen() {
         <TouchableOpacity onPress={() => router.back()} style={s.backBtn} activeOpacity={0.7}>
           <Text style={s.backIcon}>←</Text>
         </TouchableOpacity>
-        <Text style={s.headerTitle}>Mis Vehículos</Text>
+        <Text style={s.headerTitle}>{t('vehicles.title')}</Text>
         <TouchableOpacity
           style={s.newBtn}
           activeOpacity={0.8}
           onPress={() => router.push('/vehicle-form')}
         >
-          <Text style={s.newBtnText}>+ Nuevo</Text>
+          <Text style={s.newBtnText}>{t('vehicles.newButton')}</Text>
         </TouchableOpacity>
       </View>
       <View style={s.headerDivider} />
@@ -129,30 +124,59 @@ export default function VehiclesScreen() {
           <View style={s.centerBox}>
             <Text style={s.errorText}>{error}</Text>
             <TouchableOpacity onPress={cargar} style={s.retryBtn}>
-              <Text style={s.retryText}>Reintentar</Text>
+              <Text style={s.retryText}>{t('vehicles.retry')}</Text>
             </TouchableOpacity>
           </View>
         )}
 
         {!cargando && !error && vehiculos.length === 0 && (
           <View style={s.centerBox}>
-            <Text style={s.emptyText}>Todavía no tienes vehículos registrados</Text>
+            <Text style={s.emptyText}>{t('vehicles.empty')}</Text>
           </View>
         )}
 
         {!cargando && !error && vehiculos.map((v) => (
           <View key={v.id} style={s.card}>
             <View style={s.badge}>
-              <Text style={s.badgeIcon}>{TIPO_ICON[v.tipo] ?? '🚗'}</Text>
-              <Text style={s.badgeText}>{TIPO_LABEL[v.tipo] ?? v.tipo}</Text>
+              {v.tipo === 'MOTO'
+                ? <MaterialCommunityIcons name="motorbike" size={14} color={C.accentGreen} />
+                : <Ionicons name="car-outline" size={14} color={C.accentGreen} />}
+              <Text style={s.badgeText}>{v.tipo === 'MOTO' ? t('vehicles.tipoMoto') : t('vehicles.tipoCarro')}</Text>
             </View>
 
             <Text style={s.plate}>{v.placa}</Text>
             <Text style={s.model}>{v.marca} {v.modelo} · {v.anio}</Text>
             <Text style={s.detail}>
-              Color: {v.color}   ·   Capacidad: {v.capacidadPasajeros} pax
+              {t('vehicles.colorLabel')}: {v.color}   ·   {t('vehicles.capacityLabel')}: {v.capacidadPasajeros} {t('vehicles.pax')}
             </Text>
-            <Text style={s.detail}>Cédula propietario: {v.cedulaPropietario}</Text>
+            <Text style={s.detail}>{t('vehicles.ownerIdLabel')}: {v.cedulaPropietario}</Text>
+
+            {/* Estado de la revisión del administrador */}
+            {(() => {
+              const est = v.estadoVerificacion ?? 'APROBADO';
+              const color = est === 'APROBADO' ? C.accentGreen : est === 'RECHAZADO' ? C.red : C.warning;
+              return (
+                <View style={[s.estadoBox, { borderColor: color }]}>
+                  <View style={s.estadoRow}>
+                    <Ionicons
+                      name={est === 'APROBADO' ? 'checkmark-circle' : est === 'RECHAZADO' ? 'close-circle' : 'time'}
+                      size={16}
+                      color={color}
+                    />
+                    <Text style={[s.estadoTitulo, { color }]}>{t(`vehicles.estado${est}`)}</Text>
+                  </View>
+                  {est === 'PENDIENTE' && <Text style={s.estadoMsg}>{t('vehicles.pendienteMsg')}</Text>}
+                  {est === 'RECHAZADO' && (
+                    <>
+                      {!!v.motivoRechazo && (
+                        <Text style={s.estadoMsg}>{t('vehicles.motivoRechazo')}: {v.motivoRechazo}</Text>
+                      )}
+                      <Text style={s.estadoMsg}>{t('vehicles.rechazadoMsg')}</Text>
+                    </>
+                  )}
+                </View>
+              );
+            })()}
 
             <View style={s.actionsRow}>
               <TouchableOpacity
@@ -160,15 +184,17 @@ export default function VehiclesScreen() {
                 activeOpacity={0.7}
                 onPress={() => router.push({ pathname: '/vehicle-form', params: { id: v.id } })}
               >
-                <Text style={s.editText}>Editar</Text>
+                <Text style={s.editText}>{t('vehicles.edit')}</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.actionBtn, s.deactivateBtn]}
-                activeOpacity={0.7}
-                onPress={() => handleDesactivar(v)}
-              >
-                <Text style={s.deactivateText}>Desactivar</Text>
-              </TouchableOpacity>
+              {(v.estadoVerificacion ?? 'APROBADO') === 'APROBADO' && (
+                <TouchableOpacity
+                  style={[s.actionBtn, s.deactivateBtn]}
+                  activeOpacity={0.7}
+                  onPress={() => handleDesactivar(v)}
+                >
+                  <Text style={s.deactivateText}>{t('vehicles.deactivate')}</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         ))}
@@ -233,13 +259,16 @@ function createStyles(C: any) {
     borderRadius: 20,
     marginBottom: 14,
   },
-  badgeIcon: { fontSize: 13 },
-  badgeText: { color: C.badgeText, fontSize: 12, fontWeight: '600' },
+  badgeText: { color: C.accentGreen, fontSize: 12, fontWeight: '600' },
 
   plate: { fontSize: 26, fontWeight: '800', color: C.text, letterSpacing: 0.5 },
   model: { fontSize: 15, fontWeight: '600', color: C.textSub, marginTop: 6 },
   detail: { fontSize: 13, color: C.textMuted, marginTop: 6 },
 
+  estadoBox: { marginTop: 14, borderWidth: 1, borderRadius: 12, padding: 10, gap: 4 },
+  estadoRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  estadoTitulo: { fontSize: 13, fontWeight: '800' },
+  estadoMsg: { fontSize: 12, color: C.textSub, lineHeight: 17 },
   actionsRow: { flexDirection: 'row', gap: 12, marginTop: 18 },
   actionBtn: {
     flex: 1,

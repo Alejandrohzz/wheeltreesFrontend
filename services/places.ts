@@ -13,8 +13,30 @@ export interface PlaceLatLng {
 }
 
 /**
+ * Área metropolitana de Bogotá (Bogotá D.C. + municipios aledaños: Soacha,
+ * Chía, Cajicá, Zipaquirá, Funza, Mosquera, Madrid, Facatativá, Cota, Tenjo,
+ * La Calera, Sopó, Tocancipá, etc.). Se aproxima con un rectángulo.
+ * Ajusta estos valores si quieres hacerla más estrecha o más amplia.
+ */
+export const AREA_METROPOLITANA = {
+  latMin: 4.45,
+  latMax: 5.05,
+  lngMin: -74.40,
+  lngMax: -73.90,
+  // Círculo que envuelve el rectángulo (para el autocompletado de Google).
+  centro: { lat: 4.75, lng: -74.15 },
+  radioMetros: 45000,
+};
+
+/** ¿La coordenada está dentro del área metropolitana de Bogotá? */
+export function dentroAreaMetropolitana(p: PlaceLatLng): boolean {
+  const a = AREA_METROPOLITANA;
+  return p.lat >= a.latMin && p.lat <= a.latMax && p.lng >= a.lngMin && p.lng <= a.lngMax;
+}
+
+/**
  * Autocompletado de direcciones (Google Places Autocomplete, legacy API).
- * Sesgado a Bogotá/Colombia para resultados más relevantes.
+ * Restringido al área metropolitana de Bogotá.
  */
 export async function autocompletePlaces(
   input: string,
@@ -28,8 +50,9 @@ export async function autocompletePlaces(
     sessiontoken: sessionToken,
     language: 'es',
     components: 'country:co',
-    location: '4.711,-74.0721', // Bogotá
-    radius: '50000',
+    location: `${AREA_METROPOLITANA.centro.lat},${AREA_METROPOLITANA.centro.lng}`,
+    radius: String(AREA_METROPOLITANA.radioMetros),
+    strictbounds: 'true', // solo sugerencias dentro del área metropolitana
   });
 
   const res = await fetch(

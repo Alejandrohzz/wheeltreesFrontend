@@ -1,9 +1,11 @@
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
+import { esUsuarioAdmin, loginAdmin } from '@/services/admin';
 import { construirEmailDesdeUsuario, DOMINIO_CORREO, extraerUsuarioDeEmail } from '@/services/auth';
 import { guardarUltimoUsuario, obtenerUltimoUsuario } from '@/services/biometrics';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
@@ -52,6 +54,7 @@ const LIGHT_C = {
 };
 
 export default function LoginScreen() {
+  const { t } = useTranslation();
   const { isDark } = useAppTheme();
   const C = isDark ? DARK_C : LIGHT_C;
   const s = useMemo(() => createStyles(C), [C]);
@@ -117,7 +120,7 @@ export default function LoginScreen() {
       if (ok) {
         router.replace('/home');
       } else {
-        setError('No se pudo verificar tu identidad. Intenta Face ID/huella o usa el código del iPhone como respaldo.');
+        setError(t('login.errorBiometric'));
       }
     } finally {
       setVerificandoBiometria(false);
@@ -128,11 +131,26 @@ export default function LoginScreen() {
     setError('');
 
     if (!usuario.trim()) {
-      setError('El usuario es obligatorio');
+      setError(t('login.errorUsernameRequired'));
       return;
     }
     if (!password) {
-      setError('La contraseña es obligatoria');
+      setError(t('login.errorPasswordRequired'));
+      return;
+    }
+
+    // Acceso de administrador: se valida en el backend (POST /api/admin/login).
+    if (esUsuarioAdmin(usuario)) {
+      setCargando(true);
+      try {
+        await loginAdmin(usuario, password);
+        setPassword('');
+        router.replace('/admin');
+      } catch (e: any) {
+        setError(e?.message ?? t('login.errorGeneric'));
+      } finally {
+        setCargando(false);
+      }
       return;
     }
 
@@ -147,12 +165,12 @@ export default function LoginScreen() {
       // la próxima vez que abra la app.
       if (biometricDisponible && !biometricActivada) {
         Alert.alert(
-          'Inicio de sesión biométrico',
-          '¿Quieres usar tu huella o Face ID para iniciar sesión la próxima vez?',
+          t('login.biometricAlertTitle'),
+          t('login.biometricAlertMessage'),
           [
-            { text: 'Ahora no', style: 'cancel', onPress: () => router.replace('/home') },
+            { text: t('login.biometricAlertNotNow'), style: 'cancel', onPress: () => router.replace('/home') },
             {
-              text: 'Activar',
+              text: t('login.biometricAlertEnable'),
               onPress: async () => {
                 await habilitarBiometria();
                 router.replace('/home');
@@ -164,7 +182,7 @@ export default function LoginScreen() {
         router.replace('/home');
       }
     } catch (err: any) {
-      setError(err.message ?? 'Error al iniciar sesión');
+      setError(err.message ?? t('login.errorGeneric'));
     } finally {
       setCargando(false);
     }
@@ -177,16 +195,16 @@ export default function LoginScreen() {
     >
       <View style={s.container}>
 
-        <Text style={s.title}>Sign In</Text>
+        <Text style={s.title}>{t('login.title')}</Text>
 
         {/* Usuario */}
         <View style={s.fieldGroup}>
-          <Text style={s.label}>Usuario</Text>
+          <Text style={s.label}>{t('login.usernameLabel')}</Text>
           <View style={[s.inputWrap, focused === 'usuario' && s.inputWrapFocus]}>
             <Text style={s.icon}>@</Text>
             <TextInput
               style={s.input}
-              placeholder="usuario"
+              placeholder={t('login.usernamePlaceholder')}
               placeholderTextColor={C.iconMuted}
               autoCapitalize="none"
               autoCorrect={false}
@@ -203,12 +221,12 @@ export default function LoginScreen() {
 
         {/* Password */}
         <View style={s.fieldGroup}>
-          <Text style={s.label}>Password</Text>
+          <Text style={s.label}>{t('login.passwordLabel')}</Text>
           <View style={[s.inputWrap, focused === 'password' && s.inputWrapFocus]}>
             <Text style={s.icon}>◉</Text>
             <TextInput
               style={[s.input, { flex: 1 }]}
-              placeholder="Password"
+              placeholder={t('login.passwordPlaceholder')}
               placeholderTextColor={C.iconMuted}
               secureTextEntry={!showPassword}
               returnKeyType="done"
@@ -240,7 +258,7 @@ export default function LoginScreen() {
         >
           {cargando
             ? <ActivityIndicator color={C.primaryText} />
-            : <Text style={s.signInBtnText}>Sign In</Text>
+            : <Text style={s.signInBtnText}>{t('login.signInButton')}</Text>
           }
         </TouchableOpacity>
 
@@ -257,16 +275,20 @@ export default function LoginScreen() {
             ) : (
               <>
                 <Text style={s.bioIcon}>🔒</Text>
-                <Text style={s.bioBtnText}>Ingresar con biometría</Text>
+                <Text style={s.bioBtnText}>{t('login.biometricButton')}</Text>
               </>
             )}
           </TouchableOpacity>
         )}
 
+        <TouchableOpacity style={s.forgotBtn} onPress={() => router.push('/forgot-password')}>
+          <Text style={s.forgotText}>{t('login.forgotPassword')}</Text>
+        </TouchableOpacity>
+
         <View style={s.footer}>
-          <Text style={s.footerText}>¿No tienes cuenta? </Text>
+          <Text style={s.footerText}>{t('login.noAccount')}</Text>
           <TouchableOpacity onPress={() => router.push('/register')}>
-            <Text style={s.footerLink}>Regístrate</Text>
+            <Text style={s.footerLink}>{t('login.registerLink')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -320,6 +342,8 @@ function createStyles(C: any) {
   },
   bioIcon:          { fontSize: 16, marginRight: 8 },
   bioBtnText:       { color: C.accentGreen, fontSize: 15, fontWeight: '700', letterSpacing: 0.2 },
+  forgotBtn:        { alignItems: 'center', marginTop: 14 },
+  forgotText:       { fontSize: 13, color: C.accent },
   footer:           { flexDirection: 'row', justifyContent: 'center', marginTop: 32 },
   footerText:       { fontSize: 14, color: C.textMuted },
   footerLink:       { fontSize: 14, fontWeight: '600', color: C.accent },

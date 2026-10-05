@@ -1,8 +1,9 @@
 import { useAppTheme } from '@/contexts/ThemeContext';
 import PlaceAutocompleteInput from '@/components/PlaceAutocompleteInput';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAuth } from '@/context/AuthContext';
 import { getRoute, LatLng, RouteInfo } from '@/services/directions';
-import { getPlaceLatLng, PlaceLatLng } from '@/services/places';
+import { dentroAreaMetropolitana, getPlaceLatLng, PlaceLatLng } from '@/services/places';
 import { calcularPrecioSugerido, formatearPrecioCOP } from '@/services/pricing';
 import { obtenerMiPerfil, PerfilResponse } from '@/services/usuarios';
 import { Vehiculo } from '@/services/types';
@@ -11,12 +12,12 @@ import { crearViaje } from '@/services/viajes';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Modal,
   Platform,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Switch,
@@ -25,6 +26,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const DARK_C = {
   bg:          '#131517',
@@ -115,7 +117,16 @@ const UNIVERSIDAD = {
 const esDestinoUniversidad = (texto: string) =>
   texto.toLowerCase().includes('universidad el bosque');
 
+// Origen fijo en la universidad: se activa solo cuando el formulario se abre
+// desde el acceso rápido Casa/Trabajo del home (viaje que sale de la universidad).
+const ORIGEN_FIJO_UNIVERSIDAD = (descripcion?: string) =>
+  !!descripcion && esDestinoUniversidad(descripcion);
+
+// Cupos por defecto cuando el vehículo no es moto.
+const CUPOS_DEFAULT = '4';
+
 export default function PublishTripScreen() {
+  const { t } = useTranslation();
   const { isDark } = useAppTheme();
   const C = isDark ? DARK_C : LIGHT_C;
   const s = useMemo(() => createStyles(C), [C]);
@@ -130,9 +141,17 @@ export default function PublishTripScreen() {
     destinoLng?: string;
   }>();
 
+  const origenFijo = useMemo(
+    () => ORIGEN_FIJO_UNIVERSIDAD(params.origenDescripcion),
+    [params.origenDescripcion],
+  );
+
   const [vehiculos, setVehiculos]           = useState<Vehiculo[]>([]);
   const [cargandoVehiculos, setCargandoVeh] = useState(true);
   const [vehiculoSel, setVehiculoSel]       = useState<Vehiculo | null>(null);
+
+  // Si el vehículo elegido es moto, el viaje tiene exactamente 1 cupo.
+  const esMoto = vehiculoSel?.tipo === 'MOTO';
 
   const [origenTexto, setOrigenTexto]     = useState(params.origenDescripcion ?? '');
   const [destinoTexto, setDestinoTexto]   = useState(params.destinoDescripcion ?? '');
@@ -162,7 +181,7 @@ export default function PublishTripScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
 
-  const [cuposTotales, setCuposTotales]     = useState('4');
+  const [cuposTotales, setCuposTotales]     = useState(CUPOS_DEFAULT);
   const [aporte, setAporte]                 = useState('');
   const [esGratis, setEsGratis]             = useState(false);
   const [notas, setNotas]                   = useState('');
@@ -170,15 +189,31 @@ export default function PublishTripScreen() {
   const [guardando, setGuardando] = useState(false);
   const [error, setError]         = useState('');
 
+  // Moto => cupo fijo en 1 (cubre también el caso de auto-selección
+  // cuando el usuario solo tiene un vehículo).
+  useEffect(() => {
+    if (esMoto) setCuposTotales('1');
+  }, [esMoto]);
+
+  const seleccionarVehiculo = (v: Vehiculo) => {
+    // Al elegir un vehículo se precargan los cupos con su capacidad
+    // registrada; el usuario puede editarlos luego si quiere ofrecer menos.
+    setCuposTotales(String(v.capacidadPasajeros));
+    setVehiculoSel(v);
+  };
+
   useEffect(() => {
     (async () => {
       try {
         const data = await listarVehiculos();
         const activos = data.filter((v) => v.activo);
         setVehiculos(activos);
-        if (activos.length === 1) setVehiculoSel(activos[0]);
+        if (activos.length === 1) {
+          setVehiculoSel(activos[0]);
+          setCuposTotales(String(activos[0].capacidadPasajeros));
+        }
       } catch (e: any) {
-        setError('No se pudieron cargar tus vehículos');
+        setError(t('publishTrip.errorLoadVehiculos'));
       } finally {
         setCargandoVeh(false);
       }
@@ -202,7 +237,7 @@ export default function PublishTripScreen() {
       // no está marcado como gratuito, se precarga el sugerido.
       setAporte((actual) => (!esGratis && actual.trim() === '' ? String(sugerido) : actual));
     } catch (e: any) {
-      setError(e?.message ?? 'No se pudo calcular la ruta');
+      setError(e?.message ?? t('publishTrip.errorRuta'));
       setRuta(null);
       setPrecioSugerido(null);
     } finally {
@@ -235,21 +270,26 @@ export default function PublishTripScreen() {
   };
 
   const validar = () => {
-    if (!vehiculoSel) return 'Selecciona el vehículo con el que vas a viajar';
-    if (!origenLL)    return 'Selecciona el origen desde las sugerencias';
-    if (!destinoLL)   return 'Selecciona el destino desde las sugerencias';
-    if (!cuposTotales.trim() || isNaN(Number(cuposTotales)) || Number(cuposTotales) < 1)
-      return 'Ingresa un número válido de cupos';
-    if (Number(cuposTotales) > vehiculoSel.capacidadPasajeros)
-      return `Tu vehículo tiene capacidad para ${vehiculoSel.capacidadPasajeros} pasajeros`;
+    if (!vehiculoSel) return t('publishTrip.errorSelectVehiculo');
+    if (!origenLL)    return t('publishTrip.errorSelectOrigen');
+    if (!destinoLL)   return t('publishTrip.errorSelectDestino');
+    if (!dentroAreaMetropolitana(origenLL) || !dentroAreaMetropolitana(destinoLL))
+      return t('publishTrip.errorFueraArea');
+    // En moto el cupo siempre es 1, no se valida el campo.
+    if (!esMoto) {
+      if (!cuposTotales.trim() || isNaN(Number(cuposTotales)) || Number(cuposTotales) < 1)
+        return t('publishTrip.errorCupos');
+      if (Number(cuposTotales) > vehiculoSel.capacidadPasajeros)
+        return t('publishTrip.errorCapacidad', { n: vehiculoSel.capacidadPasajeros });
+    }
     if (!esGratis) {
       if (!aporte.trim() || isNaN(Number(aporte)) || Number(aporte) < 0)
-        return 'Ingresa un valor válido de aporte por pasajero';
+        return t('publishTrip.errorAporte');
       if (Number(aporte) > 8000)
-        return 'El aporte por pasajero no puede superar $8.000';
+        return t('publishTrip.errorAporteMax');
     }
     if (fecha.getTime() < Date.now())
-      return 'La fecha y hora de salida debe ser en el futuro';
+      return t('publishTrip.errorFechaFutura');
     return null;
   };
 
@@ -269,13 +309,13 @@ export default function PublishTripScreen() {
         destinoLat: destinoLL?.lat,
         destinoLng: destinoLL?.lng,
         fechaHoraSalida: `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}-${String(fecha.getDate()).padStart(2, '0')}T${String(fecha.getHours()).padStart(2, '0')}:${String(fecha.getMinutes()).padStart(2, '0')}:00`,
-        cuposTotales: Number(cuposTotales),
+        cuposTotales: esMoto ? 1 : Number(cuposTotales),
         aportePorPasajero: esGratis ? 0 : Number(aporte),
         notas: notas.trim(),
       });
       router.back();
     } catch (e: any) {
-      setError(e?.message ?? 'No se pudo publicar el viaje');
+      setError(e?.message ?? t('publishTrip.errorPublicar'));
     } finally {
       setGuardando(false);
     }
@@ -287,7 +327,7 @@ export default function PublishTripScreen() {
         <TouchableOpacity onPress={() => router.back()} style={s.backBtn} activeOpacity={0.7}>
           <Text style={s.backIcon}>←</Text>
         </TouchableOpacity>
-        <Text style={s.headerTitle}>Publicar viaje</Text>
+        <Text style={s.headerTitle}>{t('publishTrip.title')}</Text>
         <View style={{ width: 36 }} />
       </View>
 
@@ -295,14 +335,14 @@ export default function PublishTripScreen() {
         <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
           {/* ── VEHÍCULO ─────────────────────────────────────────────── */}
-          <Text style={s.label}>Vehículo</Text>
+          <Text style={s.label}>{t('publishTrip.vehiculoLabel')}</Text>
           {cargandoVehiculos ? (
             <ActivityIndicator color={C.accent} style={{ marginVertical: 12 }} />
           ) : vehiculos.length === 0 ? (
             <View style={s.warnBox}>
-              <Text style={s.warnText}>No tienes vehículos activos registrados.</Text>
+              <Text style={s.warnText}>{t('publishTrip.noVehiculosText')}</Text>
               <TouchableOpacity onPress={() => router.push('/vehicles')}>
-                <Text style={s.warnLink}>Registrar un vehículo →</Text>
+                <Text style={s.warnLink}>{t('publishTrip.registrarVehiculo')}</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -311,10 +351,12 @@ export default function PublishTripScreen() {
                 <TouchableOpacity
                   key={v.id}
                   style={[s.vehicleChip, vehiculoSel?.id === v.id && s.vehicleChipActive]}
-                  onPress={() => setVehiculoSel(v)}
+                  onPress={() => seleccionarVehiculo(v)}
                   activeOpacity={0.75}
                 >
-                  <Text style={s.vehicleIcon}>{v.tipo === 'MOTO' ? '🏍️' : '🚗'}</Text>
+                  {v.tipo === 'MOTO'
+                    ? <MaterialCommunityIcons name="motorbike" size={18} color={C.accentGreen} />
+                    : <Ionicons name="car-outline" size={18} color={C.accentGreen} />}
                   <View>
                     <Text style={[s.vehiclePlate, vehiculoSel?.id === v.id && s.vehicleTextActive]}>{v.placa}</Text>
                     <Text style={s.vehicleModel}>{v.marca} {v.modelo}</Text>
@@ -327,11 +369,19 @@ export default function PublishTripScreen() {
           {/* ── ORIGEN / DESTINO ─────────────────────────────────────── */}
           <View style={{ marginTop: 20, gap: 8 }}>
             <View>
+              {origenFijo ? (
+                <View style={[s.lockedPlace, { borderColor: C.accentGreen }]}>
+                  <Ionicons name="school-outline" size={20} color={C.accentGreen} style={s.lockedPlaceIcon} />
+                  <View style={s.lockedPlaceContent}>
+                    <Text style={s.lockedPlaceText} numberOfLines={1}>{origenTexto}</Text>
+                  </View>
+                </View>
+              ) : (
               <View style={s.placeBorderGreen}>
                 <PlaceAutocompleteInput
-                  label="Origen"
-                  icon="🟢"
-                  placeholder="¿Desde dónde sales?"
+                  label={t('publishTrip.origenLabel')}
+                  icon={<Ionicons name="ellipse" size={12} color={C.accentGreen} />}
+                  placeholder={t('publishTrip.origenPlaceholder')}
                   value={origenTexto}
                   onChangeText={(t) => { setOrigenTexto(t); setOrigenLL(null); setRuta(null); }}
                   onSelectPlace={async (p) => {
@@ -342,7 +392,8 @@ export default function PublishTripScreen() {
                 />
                 <View pointerEvents="none" style={s.placeBorderOverlay} />
               </View>
-              {(!!perfil?.direccionCasa || !!perfil?.direccionTrabajo) && (
+              )}
+              {!origenFijo && (!!perfil?.direccionCasa || !!perfil?.direccionTrabajo) && (
                 <View style={s.quickChipsRow}>
                   {!!perfil?.direccionCasa && (
                     <TouchableOpacity
@@ -354,7 +405,8 @@ export default function PublishTripScreen() {
                         setRuta(null);
                       }}
                     >
-                      <Text style={s.quickChipText}>Mi casa</Text>
+                      <Ionicons name="home-outline" size={14} color={C.accentGreen} />
+                      <Text style={s.quickChipText}>{t('publishTrip.miCasa')}</Text>
                     </TouchableOpacity>
                   )}
                   {!!perfil?.direccionTrabajo && (
@@ -367,7 +419,8 @@ export default function PublishTripScreen() {
                         setRuta(null);
                       }}
                     >
-                      <Text style={s.quickChipText}>Mi trabajo</Text>
+                      <Ionicons name="briefcase-outline" size={14} color={C.accentGreen} />
+                      <Text style={s.quickChipText}>{t('publishTrip.miTrabajo')}</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -379,16 +432,16 @@ export default function PublishTripScreen() {
             <View>
               {esDestinoUniversidad(destinoTexto) ? (
                 <View style={s.lockedPlace}>
-                  <Text style={s.lockedPlaceIcon}>🟠</Text>
+                  <Ionicons name="school-outline" size={20} color={C.accentGreen} style={s.lockedPlaceIcon} />
                   <View style={s.lockedPlaceContent}>
                     <Text style={s.lockedPlaceText} numberOfLines={1}>{destinoTexto}</Text>
                   </View>
                 </View>
               ) : (
                 <PlaceAutocompleteInput
-                  label="Destino"
-                  icon="🟠"
-                  placeholder="¿Hacia dónde vas?"
+                  label={t('publishTrip.destinoLabel')}
+                  icon={<Ionicons name="ellipse" size={12} color="#DA6720" />}
+                  placeholder={t('publishTrip.destinoPlaceholder')}
                   value={destinoTexto}
                   onChangeText={(t) => { setDestinoTexto(t); setDestinoLL(null); setRuta(null); }}
                   onSelectPlace={async (p) => {
@@ -402,7 +455,8 @@ export default function PublishTripScreen() {
                   }}
                 />
               )}
-              {(!!perfil?.direccionCasa || !!perfil?.direccionTrabajo) && (
+              {/* Si el viaje es a la universidad, el destino queda fijo: sin accesos a direcciones guardadas */}
+              {!esDestinoUniversidad(destinoTexto) && (!!perfil?.direccionCasa || !!perfil?.direccionTrabajo) && (
                 <View style={s.quickChipsRow}>
                   {!!perfil?.direccionCasa && (
                     <TouchableOpacity
@@ -414,7 +468,8 @@ export default function PublishTripScreen() {
                         setRuta(null);
                       }}
                     >
-                      <Text style={s.quickChipText}>Mi casa</Text>
+                      <Ionicons name="home-outline" size={14} color={C.accentGreen} />
+                      <Text style={s.quickChipText}>{t('publishTrip.miCasa')}</Text>
                     </TouchableOpacity>
                   )}
                   {!!perfil?.direccionTrabajo && (
@@ -427,7 +482,8 @@ export default function PublishTripScreen() {
                         setRuta(null);
                       }}
                     >
-                      <Text style={s.quickChipText}>Mi trabajo</Text>
+                      <Ionicons name="briefcase-outline" size={14} color={C.accentGreen} />
+                      <Text style={s.quickChipText}>{t('publishTrip.miTrabajo')}</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -439,7 +495,7 @@ export default function PublishTripScreen() {
           {cargandoRuta && (
             <View style={s.routeLoading}>
               <ActivityIndicator color={C.accent} />
-              <Text style={s.routeLoadingText}>Calculando ruta...</Text>
+              <Text style={s.routeLoadingText}>{t('publishTrip.calculandoRuta')}</Text>
             </View>
           )}
 
@@ -454,16 +510,16 @@ export default function PublishTripScreen() {
           )}
 
           {/* ── FECHA / HORA ─────────────────────────────────────────── */}
-          <Text style={[s.label, { marginTop: 20 }]}>Fecha y hora de salida</Text>
+          <Text style={[s.label, { marginTop: 20 }]}>{t('publishTrip.fechaHoraLabel')}</Text>
           <View style={s.dateColumn}>
             <TouchableOpacity style={s.dateBtn} onPress={() => setShowDatePicker(true)} activeOpacity={0.75}>
-              <Text style={s.dateCaption}>Fecha</Text>
+              <Text style={s.dateCaption}>{t('publishTrip.fechaLabel')}</Text>
               <Text style={s.dateBtnText}>
                 {fecha.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity style={s.dateBtn} onPress={() => setShowTimePicker(true)} activeOpacity={0.75}>
-              <Text style={s.dateCaption}>Hora de salida</Text>
+              <Text style={s.dateCaption}>{t('publishTrip.horaLabel')}</Text>
               <Text style={s.dateBtnText}>
                 {fecha.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
               </Text>
@@ -481,7 +537,7 @@ export default function PublishTripScreen() {
             <View style={s.pickerOverlay}>
               <View style={s.pickerCard}>
                 <Text style={s.pickerTitle}>
-                  {showDatePicker ? 'Selecciona la fecha' : 'Selecciona la hora'}
+                  {showDatePicker ? t('publishTrip.seleccionaFecha') : t('publishTrip.seleccionaHora')}
                 </Text>
                 <DateTimePicker
                   value={fecha}
@@ -500,7 +556,7 @@ export default function PublishTripScreen() {
                   }}
                   activeOpacity={0.8}
                 >
-                  <Text style={s.pickerCloseText}>Cancelar</Text>
+                  <Text style={s.pickerCloseText}>{t('publishTrip.cancelar')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -509,21 +565,22 @@ export default function PublishTripScreen() {
           {/* ── CUPOS / APORTE ───────────────────────────────────────── */}
           <View style={s.twoCol}>
             <View style={{ flex: 1 }}>
-              <Text style={s.label}>Cupos disponibles</Text>
+              <Text style={s.label}>{t('publishTrip.cuposLabel')}</Text>
               <TextInput
-                style={s.input}
-                value={cuposTotales}
+                style={[s.input, esMoto && s.inputDisabled]}
+                value={esMoto ? '1' : cuposTotales}
                 onChangeText={setCuposTotales}
                 keyboardType="number-pad"
                 placeholder="4"
                 placeholderTextColor={C.textMuted}
+                editable={!esMoto}
               />
             </View>
             <View style={{ flex: 1 }}>
               <View style={s.aporteLabelRow}>
-                <Text style={[s.label, s.aporteLabel]}>Aporte por pasajero</Text>
+                <Text style={[s.label, s.aporteLabel]}>{t('publishTrip.aporteLabel')}</Text>
                 <View style={s.gratisRow}>
-                  <Text style={s.gratisLabel}>Gratis</Text>
+                  <Text style={s.gratisLabel}>{t('publishTrip.gratis')}</Text>
                   <Switch
                     value={esGratis}
                     onValueChange={(valor) => {
@@ -543,7 +600,7 @@ export default function PublishTripScreen() {
               </View>
               <TextInput
                 style={[s.input, esGratis && s.inputDisabled]}
-                value={esGratis ? 'Gratis' : aporte}
+                value={esGratis ? t('publishTrip.gratis') : aporte}
                 onChangeText={setAporte}
                 keyboardType="number-pad"
                 placeholder="$ 8.000"
@@ -557,7 +614,7 @@ export default function PublishTripScreen() {
                   activeOpacity={0.7}
                 >
                   <Text style={s.sugeridoText}>
-                    💡 Sugerido: {formatearPrecioCOP(precioSugerido)}
+                    {t('publishTrip.sugerido')} {formatearPrecioCOP(precioSugerido)}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -565,12 +622,12 @@ export default function PublishTripScreen() {
           </View>
 
           {/* ── NOTAS ────────────────────────────────────────────────── */}
-          <Text style={[s.label, { marginTop: 16 }]}>Notas (opcional)</Text>
+          <Text style={[s.label, { marginTop: 16 }]}>{t('publishTrip.notasLabel')}</Text>
           <TextInput
             style={[s.input, s.textarea]}
             value={notas}
             onChangeText={setNotas}
-            placeholder="Ej: salgo puntual, punto de encuentro en la portería..."
+            placeholder={t('publishTrip.notasPlaceholder')}
             placeholderTextColor={C.textMuted}
             multiline
             numberOfLines={3}
@@ -586,7 +643,7 @@ export default function PublishTripScreen() {
           >
             {guardando
               ? <ActivityIndicator color="#FFFFFF" />
-              : <Text style={s.publishText}>Publicar viaje</Text>}
+              : <Text style={s.publishText}>{t('publishTrip.publicarViaje')}</Text>}
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -801,6 +858,9 @@ function createStyles(C: any) {
 
   quickChipsRow: { flexDirection: 'row', gap: 8, marginTop: 8, flexWrap: 'wrap' },
   quickChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     backgroundColor: 'rgba(74, 144, 217, 0.12)',
     borderWidth: 1,
     borderColor: 'rgba(74, 144, 217, 0.35)',

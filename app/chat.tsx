@@ -1,5 +1,6 @@
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
+import { setChatAbierto } from '@/services/notifications';
 import {
   conectarChat,
   desconectarChat,
@@ -11,18 +12,19 @@ import {
 } from '@/services/chat';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const DARK_C = {
   bg:        '#131517',
@@ -49,6 +51,7 @@ const LIGHT_C = {
 };
 
 export default function ChatScreen() {
+  const { t } = useTranslation();
   const { isDark } = useAppTheme();
   const C = isDark ? DARK_C : LIGHT_C;
   const s = useMemo(() => createStyles(C), [C]);
@@ -58,6 +61,12 @@ export default function ChatScreen() {
     otroUsuarioId: string;
     otroUsuarioNombre?: string;
   }>();
+
+  // Mientras este chat está abierto no se muestran avisos de esa persona.
+  useEffect(() => {
+    setChatAbierto(otroUsuarioId ?? null);
+    return () => setChatAbierto(null);
+  }, [otroUsuarioId]);
 
   const [mensajes, setMensajes]   = useState<Mensaje[]>([]);
   const [texto, setTexto]         = useState('');
@@ -76,7 +85,7 @@ export default function ChatScreen() {
         setMensajes(data);
         marcarLeidos(otroUsuarioId).catch(() => {});
       } catch (e: any) {
-        setError(e?.message ?? 'No se pudo cargar la conversación');
+        setError(e?.message ?? t('chat.errorLoad'));
       } finally {
         setCargando(false);
       }
@@ -142,7 +151,7 @@ export default function ChatScreen() {
       );
       setError('');
     } catch (e: any) {
-      setError(e?.message ?? 'No se pudo enviar el mensaje');
+      setError(e?.message ?? t('chat.errorSend'));
       setTexto(contenido); // se devuelve el texto para que no se pierda
     } finally {
       setEnviando(false);
@@ -174,9 +183,9 @@ export default function ChatScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={s.headerTitle} numberOfLines={1}>
-            {otroUsuarioNombre ?? 'Chat'}
+            {otroUsuarioNombre ?? t('chat.defaultTitle')}
           </Text>
-          <Text style={s.headerSub}>{conectado ? 'En línea' : 'Sin tiempo real — los mensajes igual se envían'}</Text>
+          <Text style={s.headerSub}>{conectado ? t('chat.online') : t('chat.offline')}</Text>
         </View>
       </View>
       <View style={s.headerDivider} />
@@ -201,7 +210,7 @@ export default function ChatScreen() {
             ListEmptyComponent={
               <View style={s.centerBox}>
                 <Text style={s.emptyText}>
-                  Todavía no hay mensajes.{'\n'}Escribe el primero
+                  {t('chat.empty')}
                 </Text>
               </View>
             }
@@ -215,7 +224,7 @@ export default function ChatScreen() {
             style={s.input}
             value={texto}
             onChangeText={setTexto}
-            placeholder="Escribe un mensaje…"
+            placeholder={t('chat.inputPlaceholder')}
             placeholderTextColor={C.textMuted}
             multiline
             maxLength={1000}

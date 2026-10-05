@@ -1,6 +1,6 @@
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { autocompletePlaces, PlacePrediction } from '@/services/places';
-import { useEffect, useRef, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   StyleSheet,
@@ -34,7 +34,7 @@ interface Props {
   value: string;
   onChangeText: (text: string) => void;
   onSelectPlace: (prediction: PlacePrediction) => void;
-  icon?: string;
+  icon?: ReactNode;
 }
 
 export default function PlaceAutocompleteInput({
@@ -101,7 +101,7 @@ export default function PlaceAutocompleteInput({
       {!!label && <Text style={s.label}>{label}</Text>}
 
       <View style={[s.inputRow, focused && s.inputRowFocused]}>
-        {!!icon && <Text style={s.icon}>{icon}</Text>}
+        {!!icon && <View style={s.icon}>{icon}</View>}
         <TextInput
           style={s.input}
           value={value}
@@ -157,7 +157,7 @@ const getStyles = (C: typeof DARK_C) => StyleSheet.create({
     paddingVertical: 12,
   },
   inputRowFocused: { borderColor: C.accent },
-  icon: { fontSize: 14 },
+  icon: { alignItems: 'center', justifyContent: 'center' },
   input: { flex: 1, fontSize: 15, color: C.text, paddingVertical: 0 },
 
   dropdown: {

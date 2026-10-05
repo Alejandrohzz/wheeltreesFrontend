@@ -1,8 +1,9 @@
 import { useAppTheme } from '@/contexts/ThemeContext';
-import { reenviarOtp, registro, verificarEmail } from '@/services/auth';
-import { RolUsuario } from '@/services/types';
+import { construirEmailDesdeUsuario, DOMINIO_CORREO, reenviarOtp, registro, verificarEmail } from '@/services/auth';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -54,6 +55,7 @@ type Field = 'nombre' | 'apellido' | 'email' | 'password' | 'confirm' | 'otp';
 type Step   = 'form' | 'otp';
 
 export default function RegisterScreen() {
+  const { t } = useTranslation();
   const { isDark } = useAppTheme();
   const C = isDark ? DARK_C : LIGHT_C;
   const s = useMemo(() => createStyles(C), [C]);
@@ -62,10 +64,10 @@ export default function RegisterScreen() {
   // ── Paso 1: formulario ────────────────────────────────────────────────────
   const [nombre,       setNombre]       = useState('');
   const [apellido,     setApellido]     = useState('');
-  const [email,        setEmail]        = useState('');
+  // Solo la primera parte del correo (antes de la @). El dominio se agrega solo.
+  const [usuario,      setUsuario]      = useState('');
   const [password,     setPassword]     = useState('');
   const [confirm,      setConfirm]      = useState('');
-  const [rol,          setRol]          = useState<RolUsuario>('PASAJERO');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm,  setShowConfirm]  = useState(false);
 
@@ -79,17 +81,23 @@ export default function RegisterScreen() {
   const [error,    setError]    = useState('');
   const [exito,    setExito]    = useState('');
 
+  // Correo completo que se envía al backend (usuario + dominio institucional).
+  const emailCompleto = construirEmailDesdeUsuario(usuario).trim().toLowerCase();
+
+  // Si pegan el correo completo, se queda solo con lo que va antes de la @.
+  const handleUsuarioChange = (v: string) => {
+    setUsuario(v.split('@')[0].replace(/\s/g, ''));
+  };
+
   // ── Validación básica ─────────────────────────────────────────────────────
   const validarFormulario = () => {
-    if (!nombre.trim())   return 'El nombre es obligatorio';
-    if (!apellido.trim()) return 'El apellido es obligatorio';
-    if (!email.trim())    return 'El email es obligatorio';
-    if (!email.toLowerCase().endsWith('@unbosque.edu.co'))
-      return 'Solo se permiten correos @unbosque.edu.co';
+    if (!nombre.trim())   return t('register.errorNombreRequired');
+    if (!apellido.trim()) return t('register.errorApellidoRequired');
+    if (!usuario.trim())  return t('register.errorEmailRequired');
     if (password.length < 8)
-      return 'La contraseña debe tener mínimo 8 caracteres';
+      return t('register.errorPasswordLength');
     if (password !== confirm)
-      return 'Las contraseñas no coinciden';
+      return t('register.errorPasswordMismatch');
     return null;
   };
 
@@ -104,14 +112,15 @@ export default function RegisterScreen() {
       const res = await registro({
         nombre:   nombre.trim(),
         apellido: apellido.trim(),
-        email:    email.trim().toLowerCase(),
+        email:    emailCompleto,
         password,
-        rol,
+        // Todos los usuarios inician como pasajero; el rol se cambia luego desde el perfil.
+        rol: 'PASAJERO',
       });
       setExito(res.mensaje);
       setStep('otp');
     } catch (e: any) {
-      setError(e.message ?? 'Error al registrarse');
+      setError(e.message ?? t('register.errorGeneric'));
     } finally {
       setCargando(false);
     }
@@ -120,16 +129,16 @@ export default function RegisterScreen() {
   // ── Verificar OTP ─────────────────────────────────────────────────────────
   const handleVerificar = async () => {
     setError(''); setExito('');
-    if (otp.length !== 6) { setError('El código debe tener 6 dígitos'); return; }
+    if (otp.length !== 6) { setError(t('register.errorOtpLength')); return; }
 
     setCargando(true);
     try {
-      const res = await verificarEmail({ email: email.trim().toLowerCase(), codigoOtp: otp });
+      const res = await verificarEmail({ email: emailCompleto, codigoOtp: otp });
       setExito(res.mensaje);
       // Espera un momento y navega al login
       setTimeout(() => router.replace('/login'), 1800);
     } catch (e: any) {
-      setError(e.message ?? 'Código inválido o expirado');
+      setError(e.message ?? t('register.errorOtpInvalid'));
     } finally {
       setCargando(false);
     }
@@ -140,10 +149,10 @@ export default function RegisterScreen() {
     setError(''); setExito('');
     setCargando(true);
     try {
-      const res = await reenviarOtp(email.trim().toLowerCase());
+      const res = await reenviarOtp(emailCompleto);
       setExito(res.mensaje);
     } catch (e: any) {
-      setError(e.message ?? 'Error al reenviar el código');
+      setError(e.message ?? t('register.errorResend'));
     } finally {
       setCargando(false);
     }
@@ -162,16 +171,16 @@ export default function RegisterScreen() {
     return (
       <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={s.container}>
-          <Text style={s.title}>Verifica tu correo</Text>
+          <Text style={s.title}>{t('register.stepOtpTitle')}</Text>
           <Text style={s.subtitle}>
-            Ingresa el código de 6 dígitos que enviamos a{'\n'}
-            <Text style={{ color: C.accent }}>{email}</Text>
+            {t('register.otpSubtitle')}{'\n'}
+            <Text style={{ color: C.accent }}>{emailCompleto}</Text>
           </Text>
 
           <View style={s.fieldGroup}>
-            <Text style={s.label}>Código OTP</Text>
+            <Text style={s.label}>{t('register.otpLabel')}</Text>
             <View style={[s.inputWrap, focused === 'otp' && s.inputWrapFocus]}>
-              <Text style={s.icon}></Text>
+              <Ionicons name="key-outline" size={18} color={C.accentGreen} style={s.iconVec} />
               <TextInput
                 style={[s.input, { letterSpacing: 6, fontSize: 20, fontWeight: '700' }]}
                 placeholder="123456"
@@ -197,12 +206,12 @@ export default function RegisterScreen() {
           >
             {cargando
               ? <ActivityIndicator color={C.primaryText} />
-              : <Text style={s.registerBtnText}>Verificar cuenta</Text>
+              : <Text style={s.registerBtnText}>{t('register.verifyButton')}</Text>
             }
           </TouchableOpacity>
 
           <TouchableOpacity style={s.reenviarBtn} onPress={handleReenviar} disabled={cargando}>
-            <Text style={s.reenviarText}>¿No recibiste el código? Reenviar</Text>
+            <Text style={s.reenviarText}>{t('register.resendPrompt')}</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -216,14 +225,14 @@ export default function RegisterScreen() {
     <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView contentContainerStyle={s.container} keyboardShouldPersistTaps="handled">
 
-        <Text style={s.title}>Create Account</Text>
+        <Text style={s.title}>{t('register.stepFormTitle')}</Text>
 
         {/* Nombre */}
         <View style={s.fieldGroup}>
-          <Text style={s.label}>Nombre</Text>
+          <Text style={s.label}>{t('register.nombreLabel')}</Text>
           <View style={[s.inputWrap, focused === 'nombre' && s.inputWrapFocus]}>
-            <Text style={s.icon}>⊙</Text>
-            <TextInput style={s.input} placeholder="Nombre" placeholderTextColor={C.iconMuted}
+            <Ionicons name="person-outline" size={18} color={C.accentGreen} style={s.iconVec} />
+            <TextInput style={s.input} placeholder={t('register.nombrePlaceholder')} placeholderTextColor={C.iconMuted}
               autoCapitalize="words" value={nombre} onChangeText={setNombre} returnKeyType="next"
               {...field('nombre')} />
           </View>
@@ -231,54 +240,34 @@ export default function RegisterScreen() {
 
         {/* Apellido */}
         <View style={s.fieldGroup}>
-          <Text style={s.label}>Apellido</Text>
+          <Text style={s.label}>{t('register.apellidoLabel')}</Text>
           <View style={[s.inputWrap, focused === 'apellido' && s.inputWrapFocus]}>
-            <Text style={s.icon}>⊙</Text>
-            <TextInput style={s.input} placeholder="Apellido" placeholderTextColor={C.iconMuted}
+            <Ionicons name="person-outline" size={18} color={C.accentGreen} style={s.iconVec} />
+            <TextInput style={s.input} placeholder={t('register.apellidoPlaceholder')} placeholderTextColor={C.iconMuted}
               autoCapitalize="words" value={apellido} onChangeText={setApellido} returnKeyType="next"
               {...field('apellido')} />
           </View>
         </View>
 
-        {/* Email */}
+        {/* Correo: solo la primera parte, el dominio se muestra fijo */}
         <View style={s.fieldGroup}>
-          <Text style={s.label}>Email institucional</Text>
+          <Text style={s.label}>{t('register.emailLabel')}</Text>
           <View style={[s.inputWrap, focused === 'email' && s.inputWrapFocus]}>
             <Text style={s.icon}>@</Text>
-            <TextInput style={s.input} placeholder="usuario@unbosque.edu.co"
+            <TextInput style={s.input} placeholder={t('login.usernamePlaceholder')}
               placeholderTextColor={C.iconMuted} autoCapitalize="none" autoCorrect={false}
-              keyboardType="email-address" value={email} onChangeText={setEmail} returnKeyType="next"
+              keyboardType="email-address" value={usuario} onChangeText={handleUsuarioChange} returnKeyType="next"
               {...field('email')} />
+            <Text style={s.dominio}>{DOMINIO_CORREO}</Text>
           </View>
-        </View>
-
-        {/* Rol */}
-        <View style={s.fieldGroup}>
-          <Text style={s.label}>Rol</Text>
-          <View style={s.rolRow}>
-            {(['PASAJERO', 'CONDUCTOR'] as RolUsuario[]).map(r => (
-              <TouchableOpacity
-                key={r}
-                style={[s.rolBtn, rol === r && s.rolBtnActive]}
-                onPress={() => setRol(r)}
-              >
-                <Text style={[s.rolBtnText, rol === r && s.rolBtnTextActive]}>
-                  {r === 'PASAJERO' ? 'Pasajero' : 'Conductor'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <Text style={s.rolHelp}>
-            Podrás cambiar entre pasajero y conductor cuando quieras desde tu perfil.
-          </Text>
         </View>
 
         {/* Password */}
         <View style={s.fieldGroup}>
-          <Text style={s.label}>Password</Text>
+          <Text style={s.label}>{t('register.passwordLabel')}</Text>
           <View style={[s.inputWrap, focused === 'password' && s.inputWrapFocus]}>
             <Text style={s.icon}>◉</Text>
-            <TextInput style={[s.input, { flex: 1 }]} placeholder="Mínimo 8 caracteres"
+            <TextInput style={[s.input, { flex: 1 }]} placeholder={t('register.passwordPlaceholder')}
               placeholderTextColor={C.iconMuted} secureTextEntry={!showPassword}
               value={password} onChangeText={setPassword} returnKeyType="next"
               {...field('password')} />
@@ -290,10 +279,10 @@ export default function RegisterScreen() {
 
         {/* Confirm Password */}
         <View style={s.fieldGroup}>
-          <Text style={s.label}>Confirm Password</Text>
+          <Text style={s.label}>{t('register.confirmPasswordLabel')}</Text>
           <View style={[s.inputWrap, focused === 'confirm' && s.inputWrapFocus]}>
             <Text style={s.icon}>◉</Text>
-            <TextInput style={[s.input, { flex: 1 }]} placeholder="Repite la contraseña"
+            <TextInput style={[s.input, { flex: 1 }]} placeholder={t('register.confirmPasswordPlaceholder')}
               placeholderTextColor={C.iconMuted} secureTextEntry={!showConfirm}
               value={confirm} onChangeText={setConfirm} returnKeyType="done"
               onSubmitEditing={handleRegistro}
@@ -314,14 +303,14 @@ export default function RegisterScreen() {
         >
           {cargando
             ? <ActivityIndicator color={C.primaryText} />
-            : <Text style={s.registerBtnText}>Create Account</Text>
+            : <Text style={s.registerBtnText}>{t('register.submitButton')}</Text>
           }
         </TouchableOpacity>
 
         <View style={s.footer}>
-          <Text style={s.footerText}>¿Ya tienes cuenta? </Text>
+          <Text style={s.footerText}>{t('register.haveAccount')}</Text>
           <TouchableOpacity onPress={() => router.push('/login')}>
-            <Text style={s.footerLink}>Sign In</Text>
+            <Text style={s.footerLink}>{t('register.loginLink')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -345,13 +334,9 @@ function createStyles(C: any) {
   },
   inputWrapFocus: { borderColor: C.borderFocus, backgroundColor: C.surfaceAlt },
   icon:    { fontSize: 18, color: C.iconMuted, marginRight: 10, width: 22, textAlign: 'center' },
+  iconVec: { marginRight: 10, width: 22, textAlign: 'center' },
   input:   { flex: 1, fontSize: 15, color: C.text, paddingVertical: 0 },
-  rolRow:  { flexDirection: 'row', gap: 10 },
-  rolBtn:  { flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: C.border, alignItems: 'center', backgroundColor: C.surface },
-  rolBtnActive: { borderColor: C.accentGreen, backgroundColor: '#1A2E22' },
-  rolBtnText:   { color: C.textMuted, fontSize: 14, fontWeight: '500' },
-  rolBtnTextActive: { color: C.accentGreen },
-  rolHelp: { color: C.textMuted, fontSize: 12, marginTop: 8 },
+  dominio: { fontSize: 13, color: C.textMuted, marginLeft: 6 },
   errorBox: { backgroundColor: '#3D1A1A', borderRadius: 10, padding: 12, marginBottom: 16 },
   errorText: { color: C.error, fontSize: 13 },
   exitoBox:  { backgroundColor: '#1A2E1A', borderRadius: 10, padding: 12, marginBottom: 16 },

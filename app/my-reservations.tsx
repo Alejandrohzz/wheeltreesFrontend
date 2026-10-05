@@ -3,16 +3,17 @@ import { cancelarReserva, misReservas, Reserva } from '@/services/reservas';
 import { codigoVerificacion } from '@/services/verificationCode';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const DARK_C = {
   bg:        '#131517',
@@ -45,12 +46,12 @@ const LIGHT_C = {
 // así que se aplica aquí como aviso/bloqueo preventivo del lado del cliente.
 const MINUTOS_LIMITE_CANCELACION = 30;
 
-const ESTILOS_ESTADO: Record<string, { color: string; label: string }> = {
-  PENDIENTE:  { color: DARK_C.yellow, label: 'Pendiente' },
-  CONFIRMADA: { color: DARK_C.green,  label: 'Confirmada' },
-  RECHAZADA:  { color: DARK_C.red,    label: 'Rechazada' },
-  CANCELADA:  { color: DARK_C.textMuted, label: 'Cancelada' },
-  COMPLETADA: { color: DARK_C.accent, label: 'Completada' },
+const ESTILOS_ESTADO: Record<string, { color: string }> = {
+  PENDIENTE:  { color: DARK_C.yellow },
+  CONFIRMADA: { color: DARK_C.green },
+  RECHAZADA:  { color: DARK_C.red },
+  CANCELADA:  { color: DARK_C.textMuted },
+  COMPLETADA: { color: DARK_C.accent },
 };
 
 function minutosParaSalida(fechaHoraSalida: string) {
@@ -63,6 +64,7 @@ function puedeCancelarse(r: Reserva) {
 }
 
 export default function MyReservationsScreen() {
+  const { t } = useTranslation();
   const { isDark } = useAppTheme();
   const C = isDark ? DARK_C : LIGHT_C;
   const s = useMemo(() => createStyles(C), [C]);
@@ -82,7 +84,7 @@ export default function MyReservationsScreen() {
       );
       setReservas(orden);
     } catch (e: any) {
-      setError(e?.message ?? 'No se pudieron cargar tus reservas');
+      setError(e?.message ?? t('myReservations.errorLoad'));
     } finally {
       setCargando(false);
     }
@@ -96,11 +98,11 @@ export default function MyReservationsScreen() {
 
   const pedirCancelacion = (r: Reserva) => {
     Alert.alert(
-      'Cancelar reserva',
-      `¿Seguro que quieres cancelar tu reserva para el viaje desde ${r.origenViaje}?`,
+      t('myReservations.cancelAlertTitle'),
+      t('myReservations.cancelAlertMsg', { origen: r.origenViaje }),
       [
-        { text: 'No', style: 'cancel' },
-        { text: 'Sí, cancelar', style: 'destructive', onPress: () => cancelar(r) },
+        { text: t('myReservations.no'), style: 'cancel' },
+        { text: t('myReservations.siCancelar'), style: 'destructive', onPress: () => cancelar(r) },
       ]
     );
   };
@@ -111,7 +113,7 @@ export default function MyReservationsScreen() {
       const actualizada = await cancelarReserva(r.id);
       setReservas((prev) => prev.map((x) => (x.id === r.id ? actualizada : x)));
     } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'No se pudo cancelar la reserva');
+      Alert.alert(t('myReservations.errorTitle'), e?.message ?? t('myReservations.errorCancelar'));
     } finally {
       setCancelandoId(null);
     }
@@ -123,7 +125,7 @@ export default function MyReservationsScreen() {
         <TouchableOpacity onPress={() => router.back()} style={s.backBtn} activeOpacity={0.7}>
           <Text style={s.backIcon}>←</Text>
         </TouchableOpacity>
-        <Text style={s.headerTitle}>Mis reservas</Text>
+        <Text style={s.headerTitle}>{t('myReservations.title')}</Text>
         <View style={{ width: 36 }} />
       </View>
       <View style={s.headerDivider} />
@@ -139,19 +141,26 @@ export default function MyReservationsScreen() {
           <View style={s.centerBox}>
             <Text style={s.errorText}>{error}</Text>
             <TouchableOpacity onPress={cargar} style={s.retryBtn}>
-              <Text style={s.retryText}>Reintentar</Text>
+              <Text style={s.retryText}>{t('myReservations.retry')}</Text>
             </TouchableOpacity>
           </View>
         )}
 
         {!cargando && !error && reservas.length === 0 && (
           <View style={s.centerBox}>
-            <Text style={s.emptyText}>Todavía no tienes reservas</Text>
+            <Text style={s.emptyText}>{t('myReservations.empty')}</Text>
           </View>
         )}
 
         {!cargando && !error && reservas.map((r) => {
-          const estilo = ESTILOS_ESTADO[r.estado] ?? { color: C.textMuted, label: r.estado };
+          const estiloBase = ESTILOS_ESTADO[r.estado] ?? { color: C.textMuted };
+          const estadoLabel = {
+            PENDIENTE: t('myReservations.estadoPendiente'),
+            CONFIRMADA: t('myReservations.estadoConfirmada'),
+            RECHAZADA: t('myReservations.estadoRechazada'),
+            CANCELADA: t('myReservations.estadoCancelada'),
+            COMPLETADA: t('myReservations.estadoCompletada'),
+          }[r.estado] ?? r.estado;
           const cancelable = puedeCancelarse(r);
           const cancelando = cancelandoId === r.id;
           const faltan = minutosParaSalida(r.fechaHoraSalida);
@@ -159,28 +168,28 @@ export default function MyReservationsScreen() {
           return (
             <View key={r.id} style={s.card}>
               <View style={s.topRow}>
-                <View style={[s.badge, { backgroundColor: `${estilo.color}22` }]}>
-                  <Text style={[s.badgeText, { color: estilo.color }]}>{estilo.label}</Text>
+                <View style={[s.badge, { backgroundColor: `${estiloBase.color}22` }]}>
+                  <Text style={[s.badgeText, { color: estiloBase.color }]}>{estadoLabel}</Text>
                 </View>
               </View>
 
               <Text style={s.origen}>{r.origenViaje}</Text>
               <Text style={s.detail}>
-                Sale: {new Date(r.fechaHoraSalida).toLocaleString('es-CO', {
+                {t('myReservations.salePrefix')} {new Date(r.fechaHoraSalida).toLocaleString('es-CO', {
                   dateStyle: 'medium',
                   timeStyle: 'short',
                 })}
               </Text>
 
               {!!r.notasPasajero && (
-                <Text style={s.notas}>Nota: {r.notasPasajero}</Text>
+                <Text style={s.notas}>{t('myReservations.notaPrefix')} {r.notasPasajero}</Text>
               )}
 
               {r.estado === 'CONFIRMADA' && (
                 <View style={s.codigoBox}>
                   <View style={{ flex: 1 }}>
-                    <Text style={s.codigoLabel}>Tu código de verificación</Text>
-                    <Text style={s.codigoHint}>Muéstraselo al conductor al subir</Text>
+                    <Text style={s.codigoLabel}>{t('myReservations.codigoLabel')}</Text>
+                    <Text style={s.codigoHint}>{t('myReservations.codigoHint')}</Text>
                   </View>
                   <Text style={s.codigoValor}>{codigoVerificacion(r.id)}</Text>
                 </View>
@@ -197,7 +206,7 @@ export default function MyReservationsScreen() {
                     })
                   }
                 >
-                  <Text style={s.chatBtnText}>Chatear con {r.conductorNombre}</Text>
+                  <Text style={s.chatBtnText}>{t('myReservations.chatarCon')} {r.conductorNombre}</Text>
                 </TouchableOpacity>
               )}
 
@@ -209,7 +218,7 @@ export default function MyReservationsScreen() {
                     router.push({ pathname: '/trip-tracking', params: { viajeId: r.viajeId } })
                   }
                 >
-                  <Text style={s.trackBtnText}>Ver seguimiento en vivo</Text>
+                  <Text style={s.trackBtnText}>{t('myReservations.verSeguimiento')}</Text>
                 </TouchableOpacity>
               )}
 
@@ -218,7 +227,7 @@ export default function MyReservationsScreen() {
                   {cancelable ? (
                     <>
                       <Text style={s.avisoText}>
-                        ⓘ Solo puedes cancelar hasta 30 min antes de la salida.
+                        {t('myReservations.avisoCancelacion')}
                       </Text>
                       <TouchableOpacity
                         style={[s.cancelBtn, cancelando && s.disabled]}
@@ -229,15 +238,15 @@ export default function MyReservationsScreen() {
                         {cancelando ? (
                           <ActivityIndicator color={C.red} size="small" />
                         ) : (
-                          <Text style={s.cancelText}>Cancelar reserva</Text>
+                          <Text style={s.cancelText}>{t('myReservations.cancelarReserva')}</Text>
                         )}
                       </TouchableOpacity>
                     </>
                   ) : (
                     <Text style={s.noCancelText}>
                       {faltan < 0
-                        ? 'Este viaje ya salió, no se puede cancelar.'
-                        : `Ya no se puede cancelar: faltan menos de ${MINUTOS_LIMITE_CANCELACION} min para la salida.`}
+                        ? t('myReservations.yaSalio')
+                        : t('myReservations.faltaMenosDe', { min: MINUTOS_LIMITE_CANCELACION })}
                     </Text>
                   )}
                 </>

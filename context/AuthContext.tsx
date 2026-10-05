@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useState } from 'rea
 import { clearToken, getToken, saveToken } from '@/services/api';
 import { login as apiLogin, LoginRequest, UsuarioResponse } from '@/services/auth';
 import { obtenerMiPerfil } from '@/services/usuarios';
+import { registrarNotificacionesPush } from '@/services/notifications';
 import {
   autenticarConBiometria,
   biometriaActivada,
@@ -57,6 +58,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setToken(accessToken);
       setUsuario(perfil);
       setHaySesionGuardada(true);
+      // No se espera (fire-and-forget): si falla el registro del push
+      // token, no debe bloquear ni tumbar el inicio de sesión.
+      registrarNotificacionesPush();
       return true;
     } catch {
       // El token guardado ya expiró o el backend lo rechazó: limpia todo
@@ -100,10 +104,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const iniciarSesion = useCallback(async (creds: LoginRequest) => {
     const res = await apiLogin(creds);
+
+    // Blindaje: SecureStore explota con un error técnico críptico si le
+    // pasas algo que no sea un string. Si el backend alguna vez responde
+    // 200 sin el accessToken bien formado (timeout raro, respuesta
+    // truncada, etc.), preferimos un mensaje claro y accionable en vez de
+    // "Invalid value provided to SecureStore...".
+    if (typeof res.accessToken !== 'string' || !res.accessToken) {
+      throw new Error('No se pudo iniciar sesión: el servidor no devolvió una sesión válida. Inténtalo de nuevo.');
+    }
+
     await saveToken(res.accessToken);
     setToken(res.accessToken);
     setUsuario(res.usuario);
     setHaySesionGuardada(true);
+    registrarNotificacionesPush();
   }, []);
 
   const cerrarSesion = useCallback(async () => {

@@ -1,20 +1,22 @@
 import { useAuth } from '@/context/AuthContext';
 import { useAppTheme } from '@/contexts/ThemeContext';
+import { marcarVistos } from '@/services/contadores';
 import { Viaje } from '@/services/types';
 import { listarMisViajes } from '@/services/viajes';
 import { misReservas, Reserva, reservasDeViaje, responderReserva } from '@/services/reservas';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const DARK_C = {
   bg:        '#131517',
@@ -65,6 +67,7 @@ const ESTADO_COMPLETADA = 'COMPLETADA';
 type ReservaConViaje = Reserva & { destinoViaje?: string };
 
 export default function NotificationsScreen() {
+  const { t } = useTranslation();
   const { isDark } = useAppTheme();
   const C = isDark ? DARK_C : LIGHT_C;
   const s = useMemo(() => createStyles(C), [C]);
@@ -89,6 +92,7 @@ export default function NotificationsScreen() {
           .filter((r) => r.estado === ESTADO_COMPLETADA)
           .sort((a, b) => new Date(b.creadoEn).getTime() - new Date(a.creadoEn).getTime());
         setReservas(finalizadas);
+        marcarVistos(finalizadas.map((r) => r.id));
         return;
       }
 
@@ -113,8 +117,10 @@ export default function NotificationsScreen() {
         (a, b) => new Date(b.creadoEn).getTime() - new Date(a.creadoEn).getTime()
       );
       setReservas(todas);
+      // Las cancelaciones son solo informativas: al verlas dejan de contar.
+      marcarVistos(todas.filter((r) => r.estado === ESTADO_CANCELADA).map((r) => r.id));
     } catch (e: any) {
-      setError(e?.message ?? 'No se pudieron cargar las notificaciones');
+      setError(e?.message ?? t('notifications.errorLoad'));
     } finally {
       setCargando(false);
     }
@@ -132,7 +138,7 @@ export default function NotificationsScreen() {
       await responderReserva(reserva.id, aceptar);
       setReservas((prev) => prev.filter((r) => r.id !== reserva.id));
     } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'No se pudo procesar la solicitud');
+      Alert.alert(t('notifications.errorTitle'), e?.message ?? t('notifications.errorResponder'));
     } finally {
       setProcesandoId(null);
     }
@@ -151,7 +157,7 @@ export default function NotificationsScreen() {
         <TouchableOpacity onPress={() => router.back()} style={s.backBtn} activeOpacity={0.7}>
           <Text style={s.backIcon}>←</Text>
         </TouchableOpacity>
-        <Text style={s.headerTitle}>Notificaciones</Text>
+        <Text style={s.headerTitle}>{t('notifications.title')}</Text>
         <View style={{ width: 36 }} />
       </View>
       <View style={s.headerDivider} />
@@ -167,7 +173,7 @@ export default function NotificationsScreen() {
           <View style={s.centerBox}>
             <Text style={s.errorText}>{error}</Text>
             <TouchableOpacity onPress={cargar} style={s.retryBtn}>
-              <Text style={s.retryText}>Reintentar</Text>
+              <Text style={s.retryText}>{t('notifications.retry')}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -175,7 +181,7 @@ export default function NotificationsScreen() {
         {!cargando && !error && visibles.length === 0 && (
           <View style={s.centerBox}>
             <Text style={s.emptyText}>
-              {esPasajero ? 'No tienes viajes finalizados recientes' : 'No tienes notificaciones nuevas'}
+              {esPasajero ? t('notifications.emptyPasajero') : t('notifications.emptyConductor')}
             </Text>
           </View>
         )}
@@ -188,9 +194,9 @@ export default function NotificationsScreen() {
           return (
             <View key={r.id} style={s.card}>
               <View style={[s.badge, (esCancelacion || esFinalizado) && s.badgeCancel, esFinalizado && s.badgeDone]}>
-                <Text style={s.badgeIcon}>{esFinalizado ? '✅' : esCancelacion ? '❌' : '🙋'}</Text>
+                <Text style={s.badgeIcon}>{esFinalizado ? '' : esCancelacion ? '' : ''}</Text>
                 <Text style={[s.badgeText, (esCancelacion || esFinalizado) && s.badgeTextCancel, esFinalizado && s.badgeTextDone]}>
-                  {esFinalizado ? 'Viaje finalizado' : esCancelacion ? 'Reserva cancelada' : 'Nueva solicitud de cupo'}
+                  {esFinalizado ? t('notifications.viajeFinalizado') : esCancelacion ? t('notifications.reservaCancelada') : t('notifications.nuevaSolicitud')}
                 </Text>
               </View>
 
@@ -207,7 +213,7 @@ export default function NotificationsScreen() {
                 {r.origenViaje}{r.destinoViaje ? ` → ${r.destinoViaje}` : ''}
               </Text>
               <Text style={s.detail}>
-                Sale: {new Date(r.fechaHoraSalida).toLocaleString('es-CO', {
+                {t('notifications.salePrefix')} {new Date(r.fechaHoraSalida).toLocaleString('es-CO', {
                   dateStyle: 'medium',
                   timeStyle: 'short',
                 })}
@@ -215,13 +221,13 @@ export default function NotificationsScreen() {
 
               {esFinalizado && (
                 <Text style={s.finalizadoText}>
-                  El conductor marcó este viaje como completado. ¡Gracias por viajar con WheelTrees!
+                  {t('notifications.finalizadoMsg')}
                 </Text>
               )}
 
               {!!r.notasPasajero && !esFinalizado && (
                 <View style={s.notasBox}>
-                  <Text style={s.notasLabel}>Nota del pasajero:</Text>
+                  <Text style={s.notasLabel}>{t('notifications.notaPasajero')}</Text>
                   <Text style={s.notasText}>{r.notasPasajero}</Text>
                 </View>
               )}
@@ -232,7 +238,7 @@ export default function NotificationsScreen() {
                   activeOpacity={0.7}
                   onPress={() => descartar(r.id)}
                 >
-                  <Text style={s.dismissText}>Entendido</Text>
+                  <Text style={s.dismissText}>{t('notifications.entendido')}</Text>
                 </TouchableOpacity>
               ) : (
                 <View style={s.actionsRow}>
@@ -242,7 +248,7 @@ export default function NotificationsScreen() {
                     disabled={procesando}
                     onPress={() => responder(r, false)}
                   >
-                    <Text style={s.rejectText}>Rechazar</Text>
+                    <Text style={s.rejectText}>{t('notifications.rechazar')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[s.actionBtn, s.acceptBtn, procesando && s.disabled]}
@@ -253,7 +259,7 @@ export default function NotificationsScreen() {
                     {procesando ? (
                       <ActivityIndicator color="#0A0A0A" size="small" />
                     ) : (
-                      <Text style={s.acceptText}>Aceptar</Text>
+                      <Text style={s.acceptText}>{t('notifications.aceptar')}</Text>
                     )}
                   </TouchableOpacity>
                 </View>

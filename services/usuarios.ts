@@ -10,6 +10,8 @@ export interface PerfilResponse extends UsuarioResponse {
   direccionTrabajo?: string | null;
   trabajoLat?:        number | null;
   trabajoLng?:        number | null;
+  calificacionPromedio?: number | null;
+  totalCalificaciones?:  number | null;
 }
 
 export interface ActualizarPerfilRequest {
@@ -27,6 +29,18 @@ export interface ActualizarPerfilRequest {
 /** GET /api/usuarios/me — perfil del usuario autenticado (requiere token válido en el header). */
 export const obtenerMiPerfil = () =>
   apiFetch<PerfilResponse>('/api/usuarios/me');
+
+/**
+ * PATCH /api/usuarios/me/fcm-token — registra el push token de Expo del
+ * dispositivo actual, para que el backend pueda mandar notificaciones
+ * push reales (nueva solicitud, reserva confirmada/rechazada, viaje
+ * cancelado, recordatorio 15 min antes de salir).
+ */
+export const registrarPushToken = (fcmToken: string) =>
+  apiFetch<void>('/api/usuarios/me/fcm-token', {
+    method: 'PATCH',
+    body:   JSON.stringify({ fcmToken }),
+  });
 
 /**
  * PUT /api/usuarios/me — reemplaza el perfil completo. El backend exige

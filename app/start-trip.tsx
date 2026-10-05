@@ -6,16 +6,17 @@ import { Viaje } from '@/services/types';
 import { detalleViaje, iniciarViaje } from '@/services/viajes';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
   Platform,
-  SafeAreaView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const DARK_C = {
   bg:        '#131517',
@@ -69,6 +70,7 @@ function RouteMap({
   routeCoords: LatLng[];
   isDark: boolean;
 }) {
+  const { t } = useTranslation();
   const C = isDark ? DARK_C : LIGHT_C;
 
   if (Platform.OS === 'web') {
@@ -108,13 +110,14 @@ function RouteMap({
         <Polyline coordinates={routeCoords} strokeColor={C.accent} strokeWidth={4} geodesic />
       )}
 
-      {origen && <Marker coordinate={origen} pinColor="#9B7BD9" title="Origen" />}
-      {destino && <Marker coordinate={destino} pinColor="#3DBE7A" title="Destino" />}
+      {origen && <Marker coordinate={origen} pinColor="#9B7BD9" title={t('startTrip.markerOrigen')} />}
+      {destino && <Marker coordinate={destino} pinColor="#3DBE7A" title={t('startTrip.markerDestino')} />}
     </MapView>
   );
 }
 
 export default function StartTripScreen() {
+  const { t } = useTranslation();
   const { isDark } = useAppTheme();
   const C = isDark ? DARK_C : LIGHT_C;
   const s = useMemo(() => createStyles(C), [C]);
@@ -148,7 +151,7 @@ export default function StartTripScreen() {
         }
       }
     } catch (e: any) {
-      setError(e?.message ?? 'No se pudo cargar el viaje');
+      setError(e?.message ?? t('startTrip.errorLoad'));
     } finally {
       setCargando(false);
     }
@@ -172,7 +175,7 @@ export default function StartTripScreen() {
       router.replace('/home');
     } catch (e: any) {
       setIniciando(false);
-      Alert.alert('No se pudo iniciar el viaje', e?.message ?? 'Inténtalo de nuevo');
+      Alert.alert(t('startTrip.errorIniciarTitle'), e?.message ?? t('startTrip.intentaDeNuevo'));
     }
   };
 
@@ -183,7 +186,7 @@ export default function StartTripScreen() {
           <Text style={s.backIcon}>←</Text>
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={s.headerTitle}>Iniciar viaje</Text>
+          <Text style={s.headerTitle}>{t('startTrip.title')}</Text>
           {!!viaje && (
             <Text style={s.headerSub} numberOfLines={1}>
               {viaje.origenDescripcion} → {viaje.destinoDescripcion}
@@ -202,7 +205,7 @@ export default function StartTripScreen() {
         <View style={s.centerBox}>
           <Text style={s.errorText}>{error}</Text>
           <TouchableOpacity onPress={cargar} style={s.retryBtn}>
-            <Text style={s.retryText}>Reintentar</Text>
+            <Text style={s.retryText}>{t('startTrip.retry')}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -228,15 +231,15 @@ export default function StartTripScreen() {
                   })}
                 </Text>
                 <Text style={s.detail}>
-                  {viaje.vehiculoDescripcion} · {viaje.cuposDisponibles}/{viaje.cuposTotales} cupos libres
+                  {viaje.vehiculoDescripcion} · {viaje.cuposDisponibles}/{viaje.cuposTotales} {t('startTrip.cuposLibres')}
                 </Text>
               </>
             )}
 
             <View style={s.slideWrap}>
               <SlideToConfirm
-                label="Desliza para iniciar viaje →"
-                confirmingLabel="Iniciando…"
+                label={t('startTrip.slideLabel')}
+                confirmingLabel={t('startTrip.slideConfirming')}
                 icon=""
                 loading={iniciando}
                 onConfirm={handleIniciar}

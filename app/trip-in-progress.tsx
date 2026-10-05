@@ -1,79 +1,74 @@
+import LiveMap from '@/components/tracking/LiveMap';
+import TopBar from '@/components/tracking/TopBar';
+import TrackingSheet from '@/components/tracking/TrackingSheet';
+import { useCamara, useRumbo } from '@/components/tracking/hooks';
+import { TRACK_DARK, TRACK_LIGHT } from '@/components/tracking/theme';
 import { useAppTheme } from '@/contexts/ThemeContext';
+import { useUbicacionViaje } from '@/hooks/useUbicacionViaje';
+import { getRoute, LatLng, RouteInfo } from '@/services/directions';
+import { dividirRuta, formatearDistancia, formatearEta, horaLlegada } from '@/services/geo';
 import { marcarAbordo, Reserva, reservasDeViaje } from '@/services/reservas';
-import { Viaje } from '@/services/types';
-import {
-  conectarTracking,
-  desconectarTracking,
-  enviarUbicacion,
-} from '@/services/tracking';
-import { completarViaje, detalleViaje } from '@/services/viajes';
 import { guardarInicioViaje, limpiarInicioViaje, obtenerInicioViaje } from '@/services/tripTimer';
+import { Viaje } from '@/services/types';
 import { codigoVerificacion } from '@/services/verificationCode';
+import { completarViaje, detalleViaje } from '@/services/viajes';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import * as Location from 'expo-location';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
-  SafeAreaView,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const DARK_C = {
-  bg:        '#131517',
-  card:      '#1E2126',
-  border:    '#2E343C',
-  text:      '#FFFFFF',
-  textMuted: '#6B7785',
-  textSub:   '#9BA3AD',
-  accent:    '#4A90D9',
-  green:     '#3DBE7A',
-  red:       '#E05C5C',
-  amber:     '#E0B84C',
-  orange:    '#F5821F',
-};
-
-const LIGHT_C = {
-  bg: '#F5F7F8',
-  card: '#FFFFFF',
-  border: '#DDE1E6',
-  text: '#11181C',
-  textMuted: '#7A8593',
-  textSub: '#5B6472',
-  accent: '#4A90D9',
-  green: '#3DBE7A',
-  red: '#E05C5C',
-  amber: '#E0B84C',
-  orange: '#F5821F',
-};
+// Quita emojis que puedan venir dentro de los textos de traducción
+// (los iconos de esta pantalla son Ionicons, así no se duplican).
+const sinEmoji = (txt: string) =>
+  txt.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '').trim();
 
 export default function TripInProgressScreen() {
+  const { t } = useTranslation();
   const { isDark } = useAppTheme();
-  const C = isDark ? DARK_C : LIGHT_C;
-  const s = useMemo(() => createStyles(C), [C]);
+  const C = isDark ? TRACK_DARK : TRACK_LIGHT;
+  const s = useMemo(() => estilos(C), [C]);
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { viajeId } = useLocalSearchParams<{ viajeId: string }>();
+  const mapRef = useRef<any>(null);
 
   const [viaje, setViaje]       = useState<Viaje | null>(null);
+  const [ruta, setRuta]         = useState<RouteInfo | null>(null);
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError]       = useState('');
   const [procesandoId, setProcesandoId] = useState<string | null>(null);
   const [finalizando, setFinalizando]   = useState(false);
+  const [altoTop, setAltoTop]     = useState(insets.top + 56);
+  const [altoSheet, setAltoSheet] = useState(260);
 
   // ── Seguimiento en tiempo real: compartir mi posición GPS mientras
   //    el viaje esté EN_CURSO, para que los pasajeros vean el avance ──
-  const [compartiendo, setCompartiendo] = useState(false);
-  const [errorUbicacion, setErrorUbicacion] = useState('');
-  const watcherRef = useRef<Location.LocationSubscription | null>(null);
+  const {
+    pasajeros: posPasajeros,
+    miPosicion,
+    compartiendo,
+    permisoDenegado,
+  } = useUbicacionViaje({
+    viajeId,
+    rol: 'CONDUCTOR',
+    estadoInicial: viaje?.estado,
+  });
+  const errorUbicacion = permisoDenegado ? t('tripInProgress.errorPermisoUbicacion') : '';
 
   // ── Contador de minutos desde que el viaje inició ──
   // Se apoya en la hora real guardada al presionar "Iniciar viaje" (más
@@ -132,8 +127,17 @@ export default function TripInProgressScreen() {
       const [v, rs] = await Promise.all([detalleViaje(viajeId), reservasDeViaje(viajeId)]);
       setViaje(v);
       setReservas(rs.filter((r) => r.estado === 'CONFIRMADA'));
+
+      if (v.origenLat != null && v.origenLng != null && v.destinoLat != null && v.destinoLng != null) {
+        try {
+          setRuta(await getRoute(
+            { lat: v.origenLat, lng: v.origenLng },
+            { lat: v.destinoLat, lng: v.destinoLng },
+          ));
+        } catch { /* sin ruta trazada no es crítico */ }
+      }
     } catch (e: any) {
-      setError(e?.message ?? 'No se pudo cargar el viaje');
+      setError(e?.message ?? t('tripInProgress.errorLoad'));
     } finally {
       setCargando(false);
     }
@@ -141,69 +145,59 @@ export default function TripInProgressScreen() {
 
   useFocusEffect(useCallback(() => { cargar(); }, [cargar]));
 
-  // Empieza a compartir la ubicación en vivo apenas se confirma que el
-  // viaje está EN_CURSO (el backend rechaza reportar ubicación en
-  // cualquier otro estado). Se detiene al salir de la pantalla o si el
-  // viaje deja de estar en curso.
-  useEffect(() => {
-    if (Platform.OS === 'web') return;
-    if (viaje?.estado !== 'EN_CURSO' || !viajeId) return;
+  // ── Mapa: ruta, ETA y cámara ──
+  const enCurso = viaje?.estado === 'EN_CURSO';
+  const origen: LatLng | null = viaje?.origenLat != null && viaje?.origenLng != null
+    ? { latitude: viaje.origenLat, longitude: viaje.origenLng } : null;
+  const destino: LatLng | null = viaje?.destinoLat != null && viaje?.destinoLng != null
+    ? { latitude: viaje.destinoLat, longitude: viaje.destinoLng } : null;
+  const posAuto: LatLng | null = miPosicion
+    ? { latitude: miPosicion.lat, longitude: miPosicion.lng } : null;
+  const heading = useRumbo(posAuto);
 
-    let activo = true;
+  const dividida = useMemo(
+    () => dividirRuta(ruta?.coordinates ?? [], enCurso ? posAuto : null),
+    [ruta, enCurso, posAuto?.latitude, posAuto?.longitude],
+  );
+  const segPorMetro = ruta && ruta.distanceMeters > 0 ? ruta.durationSeconds / ruta.distanceMeters : 0.12;
+  const segDestino = ruta
+    ? (enCurso && posAuto ? dividida.metrosRestantes * segPorMetro : ruta.durationSeconds)
+    : null;
+  const etaDestino = segDestino != null ? formatearEta(segDestino) : null;
 
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setErrorUbicacion('Activa el permiso de ubicación para compartirla con tus pasajeros');
-        return;
-      }
+  const puntosCamara = useMemo(() => {
+    const pts: LatLng[] = [];
+    if (posAuto) pts.push(posAuto);
+    if (destino) pts.push(destino);
+    if (!posAuto && origen) pts.push(origen);
+    return pts;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posAuto?.latitude, posAuto?.longitude, destino?.latitude, origen?.latitude]);
 
-      await conectarTracking(
-        async () => {
-          if (!activo) return;
-          setCompartiendo(true);
-          setErrorUbicacion('');
+  // Con el viaje en curso la cámara sigue MI ubicación actual (la del vehículo).
+  const camara = useCamara(
+    mapRef, puntosCamara, { top: altoTop, bottom: altoSheet }, !cargando && !error,
+    enCurso ? posAuto : null,
+  );
 
-          // Manda una posición inmediata apenas se conecta, sin esperar a
-          // que el conductor se mueva. Sin esto, si el carro sigue
-          // parqueado (p. ej. esperando al pasajero), watchPositionAsync
-          // con distanceInterval no dispara NINGÚN evento hasta que se
-          // recorran los 15m, y el pasajero se queda viendo "Esperando la
-          // primera posición del conductor…" indefinidamente.
-          try {
-            const actual = await Location.getCurrentPositionAsync({
-              accuracy: Location.Accuracy.High,
-            });
-            if (activo) {
-              enviarUbicacion(viajeId, actual.coords.latitude, actual.coords.longitude);
-            }
-          } catch {
-            // Si falla el fix inicial, igual sigue el watcher de abajo.
-          }
+  const pasajerosMapa = useMemo(
+    () => Object.values(posPasajeros).map((p, i) => ({
+      id: p.usuarioId ?? String(i),
+      latitude: p.lat,
+      longitude: p.lng,
+      nombre: p.nombre,
+    })),
+    [posPasajeros],
+  );
 
-          watcherRef.current = await Location.watchPositionAsync(
-            { accuracy: Location.Accuracy.High, timeInterval: 4000, distanceInterval: 15 },
-            (pos) => {
-              enviarUbicacion(viajeId, pos.coords.latitude, pos.coords.longitude);
-            },
-          );
-        },
-        (err) => {
-          if (!activo) return;
-          setCompartiendo(false);
-          setErrorUbicacion(err);
-        },
-      );
-    })();
-
-    return () => {
-      activo = false;
-      watcherRef.current?.remove();
-      watcherRef.current = null;
-      desconectarTracking();
-      setCompartiendo(false);
-    };
-  }, [viaje?.estado, viajeId]);
+  const navegar = () => {
+    if (!destino) return;
+    const url = Platform.select({
+      ios: `http://maps.apple.com/?daddr=${destino.latitude},${destino.longitude}&dirflg=d`,
+      default: `https://www.google.com/maps/dir/?api=1&destination=${destino.latitude},${destino.longitude}&travelmode=driving`,
+    })!;
+    Linking.openURL(url).catch(() => {});
+  };
 
   // ── Resumen de pasajeros: cuántos abordaron, cuántos no se presentaron
   //    y cuántos siguen pendientes por confirmar ──
@@ -248,19 +242,19 @@ export default function TripInProgressScreen() {
       cerrarVerificacion();
       handleAbordo(reserva, true);
     } else {
-      setCodigoError('El código no coincide. Pídeselo de nuevo al pasajero.');
+      setCodigoError(t('tripInProgress.codigoNoCoincide'));
     }
   };
 
   const marcarSinCodigo = () => {
     if (!verificando) return;
     Alert.alert(
-      'Marcar sin verificar',
-      `¿Confirmas que ${verificando.pasajeroNombre} abordó, sin haber verificado el código? Úsalo solo si el pasajero no puede mostrártelo.`,
+      t('tripInProgress.marcarSinVerificarTitle'),
+      t('tripInProgress.marcarSinVerificarMsg', { nombre: verificando.pasajeroNombre }),
       [
-        { text: 'Cancelar', style: 'cancel' },
+        { text: t('tripInProgress.cancelar'), style: 'cancel' },
         {
-          text: 'Sí, marcar abordo',
+          text: t('tripInProgress.siMarcarAbordo'),
           onPress: () => {
             const reserva = verificando;
             cerrarVerificacion();
@@ -277,7 +271,7 @@ export default function TripInProgressScreen() {
       const actualizada = await marcarAbordo(reserva.id, abordo);
       setReservas((prev) => prev.map((r) => (r.id === reserva.id ? actualizada : r)));
     } catch (e: any) {
-      Alert.alert('No se pudo actualizar', e?.message ?? 'Inténtalo de nuevo');
+      Alert.alert(t('tripInProgress.errorActualizarTitle'), e?.message ?? t('tripInProgress.intentaDeNuevo'));
     } finally {
       setProcesandoId(null);
     }
@@ -286,24 +280,24 @@ export default function TripInProgressScreen() {
   const handleFinalizar = () => {
     const sinDecidir = reservas.filter((r) => r.abordo == null).length;
     Alert.alert(
-      'Finalizar viaje',
+      t('tripInProgress.finalizarViaje'),
       sinDecidir > 0
-        ? `Todavía tienes ${sinDecidir} pasajero(s) sin confirmar. Al finalizar, se marcarán como "no se presentó" automáticamente. ¿Continuar?`
-        : '¿Confirmas que el viaje terminó?',
+        ? t('tripInProgress.pasajerosSinConfirmar', { n: sinDecidir })
+        : t('tripInProgress.confirmasViajeTermino'),
       [
-        { text: 'Cancelar', style: 'cancel' },
+        { text: t('tripInProgress.cancelar'), style: 'cancel' },
         {
-          text: 'Finalizar',
+          text: t('tripInProgress.finalizar'),
           onPress: async () => {
             setFinalizando(true);
             try {
               await completarViaje(viajeId);
               await limpiarInicioViaje(viajeId);
-              Alert.alert('Viaje finalizado', 'El viaje quedó marcado como completado.', [
-                { text: 'OK', onPress: () => router.replace('/my-trips') },
+              Alert.alert(t('tripInProgress.viajeFinalizadoTitle'), t('tripInProgress.viajeFinalizadoMsg'), [
+                { text: t('tripInProgress.ok'), onPress: () => router.replace('/home') },
               ]);
             } catch (e: any) {
-              Alert.alert('No se pudo finalizar', e?.message ?? 'Inténtalo de nuevo');
+              Alert.alert(t('tripInProgress.errorNoSePudoFinalizar'), e?.message ?? t('tripInProgress.intentaDeNuevo'));
             } finally {
               setFinalizando(false);
             }
@@ -313,168 +307,256 @@ export default function TripInProgressScreen() {
     );
   };
 
-  return (
-    <SafeAreaView style={s.root}>
-      <View style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn} activeOpacity={0.7}>
-          <Text style={s.backIcon}>←</Text>
-        </TouchableOpacity>
+  // ── Encabezado del sheet (siempre visible) ──
+  const header = (
+    <View style={s.header}>
+      <View style={s.tituloFila}>
         <View style={{ flex: 1 }}>
-          <Text style={s.headerTitle} numberOfLines={1}>Viaje en curso</Text>
-          {!!viaje && (
-            <Text style={s.headerSub} numberOfLines={1}>
-              {viaje.origenDescripcion} → {viaje.destinoDescripcion}
-            </Text>
-          )}
+          <Text style={s.titular} numberOfLines={1}>
+            {enCurso && etaDestino
+              ? t('tripInProgress.llegadaEn', { eta: etaDestino })
+              : t('tripInProgress.hacia', { destino: viaje?.destinoDescripcion ?? '' })}
+          </Text>
+          <Text style={s.subtitular} numberOfLines={1}>
+            {enCurso && segDestino != null
+              ? `${t('tripInProgress.llegadaEstimada', { hora: horaLlegada(segDestino) })} · ${formatearDistancia(dividida.metrosRestantes)}`
+              : viaje?.destinoDescripcion ?? ''}
+          </Text>
         </View>
-        {viaje?.estado === 'EN_CURSO' && (
-          <View style={s.timerPill}>
-            <Text style={s.timerIcon}>⏱</Text>
-            <Text style={s.timerText}>{tiempoFormateado}</Text>
-          </View>
+        {!!destino && (
+          <TouchableOpacity style={s.navegarBtn} onPress={navegar} activeOpacity={0.8}>
+            <Ionicons name="navigate" size={16} color="#FFFFFF" />
+            <Text style={s.navegarTxt}>{t('tripInProgress.navegar')}</Text>
+          </TouchableOpacity>
         )}
       </View>
-      <View style={s.headerDivider} />
-
-      {viaje?.estado === 'EN_CURSO' && (
-        <View style={s.trackingBanner}>
-          {compartiendo ? (
-            <>
-              <View style={s.liveDot} />
-              <Text style={s.trackingText}>Compartiendo tu ubicación en vivo con los pasajeros</Text>
-            </>
-          ) : errorUbicacion ? (
-            <Text style={s.trackingError}>{errorUbicacion}</Text>
-          ) : (
-            <Text style={s.trackingText}>Conectando seguimiento en vivo…</Text>
-          )}
-        </View>
-      )}
 
       {!cargando && !error && resumenPasajeros.total > 0 && (
         <View style={s.statsRow}>
-          <View style={[s.statChip, { borderColor: C.amber }]}>
+          <View style={s.statChip}>
             <Text style={[s.statValue, { color: C.amber }]}>{resumenPasajeros.pendientes}</Text>
-            <Text style={s.statLabel}>Pendientes</Text>
+            <Text style={s.statLabel}>{t('tripInProgress.pendientes')}</Text>
           </View>
-          <View style={[s.statChip, { borderColor: C.green }]}>
+          <View style={s.statChip}>
             <Text style={[s.statValue, { color: C.green }]}>{resumenPasajeros.abordaron}</Text>
-            <Text style={s.statLabel}>Abordaron</Text>
+            <Text style={s.statLabel}>{t('tripInProgress.abordaron')}</Text>
           </View>
-          <View style={[s.statChip, { borderColor: C.red }]}>
+          <View style={s.statChip}>
             <Text style={[s.statValue, { color: C.red }]}>{resumenPasajeros.noPresentaron}</Text>
-            <Text style={s.statLabel}>No llegaron</Text>
+            <Text style={s.statLabel}>{t('tripInProgress.noLlegaron')}</Text>
           </View>
         </View>
       )}
 
-      <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-        {cargando && (
-          <View style={s.centerBox}>
-            <ActivityIndicator color={C.accent} />
-          </View>
-        )}
-
-        {!cargando && !!error && (
-          <View style={s.centerBox}>
-            <Text style={s.errorText}>{error}</Text>
-            <TouchableOpacity onPress={cargar} style={s.retryBtn}>
-              <Text style={s.retryText}>Reintentar</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {!cargando && !error && reservas.length === 0 && (
-          <View style={s.centerBox}>
-            <Text style={s.emptyText}>Este viaje no tiene pasajeros confirmados.</Text>
-          </View>
-        )}
-
-        {!cargando && !error && reservasOrdenadas.map((r) => {
-          const procesando = procesandoId === r.id;
-          const estadoBadge =
-            r.abordo === true
-              ? { label: '✓ Abordó', color: C.green, bg: 'rgba(61,190,122,0.15)' }
-              : r.abordo === false
-              ? { label: '✕ No se presentó', color: C.red, bg: 'rgba(224,92,92,0.15)' }
-              : { label: 'Pendiente', color: C.amber, bg: 'rgba(224,184,76,0.15)' };
-          return (
-            <View key={r.id} style={s.card}>
-              <View style={s.cardHeader}>
-                <Text style={s.nombre}>{r.pasajeroNombre}</Text>
-                <View style={[s.estadoBadge, { backgroundColor: estadoBadge.bg }]}>
-                  <Text style={[s.estadoBadgeText, { color: estadoBadge.color }]}>
-                    {estadoBadge.label}
-                  </Text>
-                </View>
-              </View>
-              {!!r.notasPasajero && <Text style={s.notas}>{r.notasPasajero}</Text>}
-
-              <View style={s.actionsRow}>
-                <TouchableOpacity
-                  style={[
-                    s.actionBtn, s.noShowBtn,
-                    r.abordo === false && s.noShowBtnActive,
-                    procesando && s.disabled,
-                  ]}
-                  activeOpacity={0.7}
-                  disabled={procesando}
-                  onPress={() => handleAbordo(r, false)}
-                >
-                  <Text style={[s.noShowText, r.abordo === false && s.noShowTextActive]}>
-                    No se presentó
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    s.actionBtn, s.boardBtn,
-                    r.abordo === true && s.boardBtnActive,
-                    procesando && s.disabled,
-                  ]}
-                  activeOpacity={0.7}
-                  disabled={procesando}
-                  onPress={() => abrirVerificacion(r)}
-                >
-                  {procesando ? (
-                    <ActivityIndicator color="#0A0A0A" size="small" />
-                  ) : (
-                    <Text style={[s.boardText, r.abordo === true && s.boardTextActive]}>
-                      {r.abordo === true ? '✓ Abordó' : '🔑 Verificar y abordar'}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-
-              <TouchableOpacity
-                style={s.contactLink}
-                activeOpacity={0.7}
-                onPress={() =>
-                  router.push({
-                    pathname: '/chat',
-                    params: { otroUsuarioId: r.pasajeroId, otroUsuarioNombre: r.pasajeroNombre },
-                  })
-                }
-              >
-                <Text style={s.contactLinkText}> Escribirle a {r.pasajeroNombre.split(' ')[0]}</Text>
-              </TouchableOpacity>
-            </View>
-          );
-        })}
-      </ScrollView>
-
       {!cargando && !error && (
-        <View style={s.footer}>
-          <TouchableOpacity
-            style={[s.finBtn, finalizando && s.disabled]}
-            activeOpacity={0.85}
-            disabled={finalizando}
-            onPress={handleFinalizar}
-          >
-            {finalizando
-              ? <ActivityIndicator color="#0A0A0A" />
-              : <Text style={s.finText}>Finalizar viaje</Text>}
+        <TouchableOpacity
+          style={[s.finBtn, finalizando && s.disabled]}
+          activeOpacity={0.85}
+          disabled={finalizando}
+          onPress={handleFinalizar}
+        >
+          {finalizando ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <>
+              <Ionicons name="flag" size={18} color="#FFFFFF" />
+              <Text style={s.finText}>{t('tripInProgress.finalizarViaje')}</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
+  return (
+    <View style={s.root}>
+      <TopBar
+        C={C}
+        titulo={t('tripInProgress.title')}
+        onBack={() => router.back()}
+        onAlto={setAltoTop}
+        derecha={
+          enCurso ? (
+            <View style={s.timerPill}>
+              <Ionicons name="timer-outline" size={14} color={C.accent} />
+              <Text style={s.timerText}>{tiempoFormateado}</Text>
+            </View>
+          ) : undefined
+        }
+      />
+
+      {cargando && (
+        <View style={s.centro}><ActivityIndicator color={C.accent} /></View>
+      )}
+
+      {!cargando && !!error && (
+        <View style={s.centro}>
+          <Ionicons name="alert-circle-outline" size={36} color={C.red} />
+          <Text style={s.errorText}>{error}</Text>
+          <TouchableOpacity onPress={cargar} style={s.retryBtn} activeOpacity={0.7}>
+            <Text style={s.retryText}>{t('tripInProgress.retry')}</Text>
           </TouchableOpacity>
         </View>
+      )}
+
+      {!cargando && !error && (
+        <>
+          <LiveMap
+            mapRef={mapRef}
+            isDark={isDark}
+            C={C}
+            origen={origen}
+            destino={destino}
+            conductor={posAuto}
+            heading={heading}
+            rutaRecorrida={dividida.recorrido}
+            rutaRestante={dividida.restante}
+            etaDestino={etaDestino}
+            textoOrigen={t('tripTracking.markerOrigen')}
+            textoDestino={t('tripTracking.markerDestino')}
+            pasajeros={pasajerosMapa}
+            padding={{ top: altoTop, bottom: altoSheet }}
+            onPanDrag={camara.onPanDrag}
+          />
+
+          {!camara.siguiendo && (
+            <TouchableOpacity
+              style={[s.recentrar, { bottom: altoSheet + 14 }]}
+              onPress={camara.recentrar}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="locate" size={22} color={C.text} />
+            </TouchableOpacity>
+          )}
+
+          <TrackingSheet C={C} header={header} onAltoColapsado={setAltoSheet}>
+            <View style={s.cuerpo}>
+              {enCurso && (
+                <View style={[s.trackingBanner, !compartiendo && !!errorUbicacion && s.trackingBannerWarn]}>
+                  {compartiendo ? (
+                    <>
+                      <View style={s.liveDot} />
+                      <Text style={s.trackingText}>{t('tripInProgress.compartiendoUbicacion')}</Text>
+                    </>
+                  ) : errorUbicacion ? (
+                    <>
+                      <Ionicons name="alert-circle-outline" size={18} color={C.amber} />
+                      <Text style={s.trackingError}>{errorUbicacion}</Text>
+                    </>
+                  ) : (
+                    <>
+                      <ActivityIndicator size="small" color={C.textSub} />
+                      <Text style={s.trackingText}>{t('tripInProgress.conectandoSeguimiento')}</Text>
+                    </>
+                  )}
+                </View>
+              )}
+
+              <Text style={s.seccion}>{t('tripInProgress.pasajeros')}</Text>
+
+              {reservas.length === 0 && (
+                <View style={s.vacio}>
+                  <Ionicons name="people-outline" size={32} color={C.textMuted} />
+                  <Text style={s.emptyText}>{t('tripInProgress.emptyPasajeros')}</Text>
+                </View>
+              )}
+
+              {reservasOrdenadas.map((r) => {
+                const procesando = procesandoId === r.id;
+                const estadoBadge =
+                  r.abordo === true
+                    ? { label: t('tripInProgress.badgeAbordo'), color: C.green, bg: 'rgba(61,190,122,0.15)' }
+                    : r.abordo === false
+                    ? { label: t('tripInProgress.badgeNoPresentado'), color: C.red, bg: 'rgba(224,92,92,0.15)' }
+                    : { label: t('tripInProgress.badgePendiente'), color: C.amber, bg: 'rgba(224,184,76,0.15)' };
+                const inicial = (r.pasajeroNombre ?? '?').trim().charAt(0).toUpperCase();
+                return (
+                  <View key={r.id} style={s.card}>
+                    <View style={s.cardHeader}>
+                      <View style={s.avatar}>
+                        <Text style={s.avatarText}>{inicial}</Text>
+                      </View>
+                      <View style={s.cardInfo}>
+                        <Text style={s.nombre} numberOfLines={1}>{r.pasajeroNombre}</Text>
+                        <View style={[s.estadoBadge, { backgroundColor: estadoBadge.bg }]}>
+                          <Text style={[s.estadoBadgeText, { color: estadoBadge.color }]}>
+                            {estadoBadge.label}
+                          </Text>
+                        </View>
+                      </View>
+                      <TouchableOpacity
+                        style={s.chatBtn}
+                        activeOpacity={0.7}
+                        onPress={() =>
+                          router.push({
+                            pathname: '/chat',
+                            params: { otroUsuarioId: r.pasajeroId, otroUsuarioNombre: r.pasajeroNombre },
+                          })
+                        }
+                        accessibilityLabel={`${t('tripInProgress.escribirleA')} ${r.pasajeroNombre.split(' ')[0]}`}
+                      >
+                        <Ionicons name="chatbubble" size={18} color={C.text} />
+                      </TouchableOpacity>
+                    </View>
+
+                    {!!r.notasPasajero && (
+                      <View style={s.notasBox}>
+                        <Text style={s.notas}>{r.notasPasajero}</Text>
+                      </View>
+                    )}
+
+                    <View style={s.actionsRow}>
+                      <TouchableOpacity
+                        style={[
+                          s.actionBtn, s.noShowBtn,
+                          r.abordo === false && s.noShowBtnActive,
+                          procesando && s.disabled,
+                        ]}
+                        activeOpacity={0.7}
+                        disabled={procesando}
+                        onPress={() => handleAbordo(r, false)}
+                      >
+                        <Ionicons
+                          name="close-circle-outline"
+                          size={17}
+                          color={r.abordo === false ? C.red : C.textSub}
+                        />
+                        <Text style={[s.noShowText, r.abordo === false && s.noShowTextActive]}>
+                          {t('tripInProgress.noSePresento')}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          s.actionBtn, s.boardBtn,
+                          r.abordo === true && s.boardBtnActive,
+                          procesando && s.disabled,
+                        ]}
+                        activeOpacity={0.7}
+                        disabled={procesando}
+                        onPress={() => abrirVerificacion(r)}
+                      >
+                        {procesando ? (
+                          <ActivityIndicator color={r.abordo === true ? '#0A0A0A' : C.green} size="small" />
+                        ) : (
+                          <>
+                            <Ionicons
+                              name={r.abordo === true ? 'checkmark-circle' : 'shield-checkmark-outline'}
+                              size={17}
+                              color={r.abordo === true ? '#0A0A0A' : C.green}
+                            />
+                            <Text style={[s.boardText, r.abordo === true && s.boardTextActive]}>
+                              {sinEmoji(r.abordo === true ? t('tripInProgress.badgeAbordo') : t('tripInProgress.verificarYAbordar'))}
+                            </Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </TrackingSheet>
+        </>
       )}
 
       <Modal
@@ -488,22 +570,25 @@ export default function TripInProgressScreen() {
           style={s.modalOverlay}
         >
           <View style={s.modalCard}>
-            <Text style={s.modalTitle}>Verificar a {verificando?.pasajeroNombre}</Text>
+            <View style={s.modalIconWrap}>
+              <Ionicons name="shield-checkmark-outline" size={26} color={C.green} />
+            </View>
+            <Text style={s.modalTitle}>{t('tripInProgress.verificarA')} {verificando?.pasajeroNombre}</Text>
             <Text style={s.modalSub}>
-              Pídele el código de 4 dígitos que le aparece en "Mis reservas" y escríbelo aquí.
+              {t('tripInProgress.pideCodigoMsg')}
             </Text>
 
             <TextInput
               value={codigoIngresado}
-              onChangeText={(t) => {
-                setCodigoIngresado(t.replace(/[^0-9]/g, '').slice(0, 4));
+              onChangeText={(v) => {
+                setCodigoIngresado(v.replace(/[^0-9]/g, '').slice(0, 4));
                 setCodigoError('');
               }}
               keyboardType="number-pad"
               maxLength={4}
               placeholder="0000"
               placeholderTextColor={C.textMuted}
-              style={s.codigoInput}
+              style={[s.codigoInput, !!codigoError && s.codigoInputError]}
               autoFocus
             />
 
@@ -515,144 +600,160 @@ export default function TripInProgressScreen() {
               disabled={codigoIngresado.length < 4}
               onPress={confirmarCodigo}
             >
-              <Text style={s.modalConfirmText}>Confirmar código</Text>
+              <Text style={s.modalConfirmText}>{t('tripInProgress.confirmarCodigo')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={s.modalGhostBtn} activeOpacity={0.7} onPress={marcarSinCodigo}>
-              <Text style={s.modalGhostText}>No tiene el código, marcar igual</Text>
+              <Text style={s.modalGhostText}>{t('tripInProgress.noTieneCodigo')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={s.modalCancelBtn} activeOpacity={0.7} onPress={cerrarVerificacion}>
-              <Text style={s.modalCancelText}>Cancelar</Text>
+              <Text style={s.modalCancelText}>{t('tripInProgress.cancelar')}</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
-function createStyles(C: any) {
+function estilos(C: typeof TRACK_DARK) {
   return StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.bg },
+    root: { flex: 1, backgroundColor: C.bg },
+    centro: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, backgroundColor: C.sheet },
+    errorText: { color: C.red, fontSize: 14, textAlign: 'center', paddingHorizontal: 24 },
+    retryBtn: { borderWidth: 1, borderColor: C.accent, borderRadius: 24, paddingHorizontal: 20, paddingVertical: 9 },
+    retryText: { color: C.accent, fontWeight: '600' },
 
-  header: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16,
-  },
-  backBtn:  { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontSize: 22, color: C.text },
-  headerTitle: { fontSize: 17, fontWeight: '700', color: C.text },
-  headerSub:   { fontSize: 12, color: C.textMuted, marginTop: 1 },
-  headerDivider: { height: 1, backgroundColor: C.border },
+    timerPill: {
+      flexDirection: 'row', alignItems: 'center', gap: 4,
+      backgroundColor: C.sheet, borderWidth: 1, borderColor: C.border,
+      paddingHorizontal: 9, paddingVertical: 6, borderRadius: 14,
+    },
+    timerText: { fontSize: 12, fontWeight: '700', color: C.text, fontVariant: ['tabular-nums'] },
 
-  timerPill: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    backgroundColor: C.card, borderWidth: 1, borderColor: C.border,
-    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20,
-  },
-  timerIcon: { fontSize: 12 },
-  timerText: { fontSize: 13, fontWeight: '700', color: C.text, fontVariant: ['tabular-nums'] },
+    recentrar: {
+      position: 'absolute', right: 14, width: 44, height: 44, borderRadius: 22,
+      backgroundColor: C.sheet, alignItems: 'center', justifyContent: 'center',
+      elevation: 6, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 5, shadowOffset: { width: 0, height: 2 },
+    },
 
-  trackingBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    paddingHorizontal: 20, paddingVertical: 10,
-    backgroundColor: 'rgba(61,190,122,0.10)',
-    borderBottomWidth: 1, borderBottomColor: C.border,
-  },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.green },
-  trackingText: { fontSize: 12, color: C.textSub, flex: 1 },
-  trackingError: { fontSize: 12, color: C.amber, flex: 1 },
+    header: { paddingHorizontal: 20, paddingBottom: 14 },
+    tituloFila: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    titular: { fontSize: 22, fontWeight: '700', color: C.text },
+    subtitular: { fontSize: 13, color: C.textSub, marginTop: 3 },
+    navegarBtn: {
+      flexDirection: 'row', alignItems: 'center', gap: 6,
+      backgroundColor: C.accent, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 9,
+    },
+    navegarTxt: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
 
-  statsRow: {
-    flexDirection: 'row', gap: 10, paddingHorizontal: 20, paddingTop: 14,
-  },
-  statChip: {
-    flex: 1, alignItems: 'center', borderWidth: 1, borderRadius: 12,
-    paddingVertical: 8, backgroundColor: C.card,
-  },
-  statValue: { fontSize: 18, fontWeight: '800' },
-  statLabel: { fontSize: 11, color: C.textSub, marginTop: 2 },
+    statsRow: { flexDirection: 'row', gap: 8, marginTop: 14 },
+    statChip: {
+      flex: 1, alignItems: 'center', borderRadius: 12,
+      paddingVertical: 9, backgroundColor: C.card,
+    },
+    statValue: { fontSize: 19, fontWeight: '800' },
+    statLabel: { fontSize: 11, fontWeight: '600', color: C.textSub, marginTop: 1 },
 
-  scroll: { padding: 20, gap: 14, flexGrow: 1 },
+    finBtn: {
+      flexDirection: 'row', gap: 8, marginTop: 14,
+      backgroundColor: C.orange, borderRadius: 14, paddingVertical: 14,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    finText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
+    disabled: { opacity: 0.6 },
 
-  centerBox: { alignItems: 'center', justifyContent: 'center', paddingTop: 60, gap: 12 },
-  errorText: { color: C.red, fontSize: 14, textAlign: 'center' },
-  emptyText: { color: C.textSub, fontSize: 14, textAlign: 'center' },
-  retryBtn: {
-    borderWidth: 1, borderColor: C.accent, borderRadius: 10,
-    paddingHorizontal: 16, paddingVertical: 8,
-  },
-  retryText: { color: C.accent, fontWeight: '600' },
+    cuerpo: { paddingHorizontal: 20, paddingTop: 6, gap: 12 },
+    seccion: { fontSize: 13, fontWeight: '700', color: C.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
 
-  card: {
-    backgroundColor: C.card, borderRadius: 16, borderWidth: 1,
-    borderColor: C.border, padding: 16,
-  },
-  cardHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-  },
-  nombre: { fontSize: 16, fontWeight: '700', color: C.text, flexShrink: 1 },
-  notas:  { fontSize: 13, color: C.textSub, marginTop: 4 },
+    trackingBanner: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      paddingHorizontal: 14, paddingVertical: 11,
+      backgroundColor: 'rgba(61,190,122,0.10)',
+      borderWidth: 1, borderColor: 'rgba(61,190,122,0.35)',
+      borderRadius: 12,
+    },
+    trackingBannerWarn: {
+      backgroundColor: 'rgba(224,184,76,0.10)',
+      borderColor: 'rgba(224,184,76,0.35)',
+    },
+    liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.green },
+    trackingText: { fontSize: 13, color: C.textSub, flex: 1 },
+    trackingError: { fontSize: 13, color: C.amber, flex: 1 },
 
-  estadoBadge: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 12 },
-  estadoBadgeText: { fontSize: 11, fontWeight: '700' },
+    vacio: { alignItems: 'center', gap: 10, paddingVertical: 28 },
+    emptyText: { color: C.textSub, fontSize: 14, textAlign: 'center' },
 
-  actionsRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  actionBtn: {
-    flex: 1, alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 11, borderRadius: 12, borderWidth: 1,
-  },
-  disabled: { opacity: 0.6 },
+    card: { backgroundColor: C.card, borderRadius: 14, padding: 14 },
+    cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    avatar: {
+      width: 42, height: 42, borderRadius: 21, backgroundColor: C.chip,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    avatarText: { fontSize: 17, fontWeight: '700', color: C.text },
+    cardInfo: { flex: 1, alignItems: 'flex-start', gap: 5 },
+    nombre: { fontSize: 15, fontWeight: '700', color: C.text, alignSelf: 'stretch' },
 
-  noShowBtn:       { borderColor: C.border, backgroundColor: 'transparent' },
-  noShowBtnActive: { borderColor: C.red, backgroundColor: 'rgba(224,92,92,0.15)' },
-  noShowText:       { color: C.textSub, fontWeight: '600', fontSize: 13 },
-  noShowTextActive: { color: C.red },
+    estadoBadge: { paddingHorizontal: 9, paddingVertical: 3, borderRadius: 8 },
+    estadoBadgeText: { fontSize: 11, fontWeight: '700' },
 
-  boardBtn:       { borderColor: C.border, backgroundColor: 'transparent' },
-  boardBtnActive: { borderColor: C.green, backgroundColor: C.green },
-  boardText:       { color: C.textSub, fontWeight: '600', fontSize: 13 },
-  boardTextActive: { color: '#0A0A0A' },
+    chatBtn: {
+      width: 40, height: 40, borderRadius: 20, backgroundColor: C.chip,
+      alignItems: 'center', justifyContent: 'center',
+    },
 
-  contactLink: { alignSelf: 'center', marginTop: 10, paddingVertical: 4, paddingHorizontal: 8 },
-  contactLinkText: { color: C.accent, fontWeight: '600', fontSize: 12 },
+    notasBox: { marginTop: 12, padding: 10, borderRadius: 10, backgroundColor: C.sheet },
+    notas: { fontSize: 13, color: C.textSub, lineHeight: 18 },
 
-  footer: {
-    padding: 16, borderTopWidth: 1, borderTopColor: C.border, backgroundColor: C.bg,
-  },
-  finBtn: {
-    backgroundColor: C.orange, borderRadius: 14, paddingVertical: 15,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  finText: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
+    actionsRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
+    actionBtn: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+      paddingVertical: 12, borderRadius: 12, borderWidth: 1,
+    },
 
-  modalOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
-    alignItems: 'center', justifyContent: 'center', padding: 24,
-  },
-  modalCard: {
-    width: '100%', maxWidth: 360, backgroundColor: C.card, borderRadius: 20,
-    borderWidth: 1, borderColor: C.border, padding: 22, alignItems: 'center',
-  },
-  modalTitle: { fontSize: 17, fontWeight: '700', color: C.text, textAlign: 'center' },
-  modalSub: {
-    fontSize: 13, color: C.textSub, textAlign: 'center', marginTop: 6, marginBottom: 18,
-  },
-  codigoInput: {
-    width: 160, borderWidth: 1, borderColor: C.border, borderRadius: 14,
-    paddingVertical: 12, textAlign: 'center', fontSize: 28, fontWeight: '800',
-    letterSpacing: 10, color: C.text, backgroundColor: C.bg,
-  },
-  modalError: { color: C.red, fontSize: 12, marginTop: 10, textAlign: 'center' },
-  modalConfirmBtn: {
-    width: '100%', backgroundColor: C.green, borderRadius: 14,
-    paddingVertical: 14, alignItems: 'center', marginTop: 18,
-  },
-  modalConfirmText: { color: '#0A0A0A', fontWeight: '700', fontSize: 15 },
-  modalGhostBtn: { paddingVertical: 12 },
-  modalGhostText: { color: C.textSub, fontSize: 12, textDecorationLine: 'underline' },
-  modalCancelBtn: { paddingVertical: 4 },
-  modalCancelText: { color: C.textMuted, fontSize: 13, fontWeight: '600' },
-});
+    noShowBtn:       { borderColor: C.border, backgroundColor: 'transparent' },
+    noShowBtnActive: { borderColor: C.red, backgroundColor: 'rgba(224,92,92,0.15)' },
+    noShowText:       { color: C.textSub, fontWeight: '600', fontSize: 13 },
+    noShowTextActive: { color: C.red },
+
+    boardBtn:       { borderColor: C.green, backgroundColor: 'rgba(61,190,122,0.10)' },
+    boardBtnActive: { borderColor: C.green, backgroundColor: C.green },
+    boardText:       { color: C.green, fontWeight: '700', fontSize: 13 },
+    boardTextActive: { color: '#0A0A0A' },
+
+    modalOverlay: {
+      flex: 1, backgroundColor: 'rgba(0,0,0,0.55)',
+      alignItems: 'center', justifyContent: 'center', padding: 24,
+    },
+    modalCard: {
+      width: '100%', maxWidth: 360, backgroundColor: C.sheet, borderRadius: 20,
+      borderWidth: 1, borderColor: C.border, padding: 22, alignItems: 'center',
+    },
+    modalIconWrap: {
+      width: 52, height: 52, borderRadius: 26, marginBottom: 12,
+      backgroundColor: 'rgba(61,190,122,0.15)',
+      alignItems: 'center', justifyContent: 'center',
+    },
+    modalTitle: { fontSize: 17, fontWeight: '700', color: C.text, textAlign: 'center' },
+    modalSub: {
+      fontSize: 13, color: C.textSub, textAlign: 'center', marginTop: 6, marginBottom: 18, lineHeight: 19,
+    },
+    codigoInput: {
+      width: 170, borderWidth: 1, borderColor: C.border, borderRadius: 12,
+      paddingVertical: 12, textAlign: 'center', fontSize: 28, fontWeight: '800',
+      letterSpacing: 10, color: C.text, backgroundColor: C.card,
+    },
+    codigoInputError: { borderColor: C.red },
+    modalError: { color: C.red, fontSize: 12, marginTop: 10, textAlign: 'center' },
+    modalConfirmBtn: {
+      width: '100%', backgroundColor: C.green, borderRadius: 14,
+      paddingVertical: 14, alignItems: 'center', marginTop: 18,
+    },
+    modalConfirmText: { color: '#0A0A0A', fontWeight: '700', fontSize: 15 },
+    modalGhostBtn: { paddingVertical: 12 },
+    modalGhostText: { color: C.textSub, fontSize: 12, textDecorationLine: 'underline' },
+    modalCancelBtn: { paddingVertical: 4 },
+    modalCancelText: { color: C.textMuted, fontSize: 13, fontWeight: '600' },
+  });
 }

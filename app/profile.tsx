@@ -1,14 +1,19 @@
 import { useAppTheme } from '@/contexts/ThemeContext';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { Ionicons } from '@expo/vector-icons';
+import type { ComponentProps } from 'react';
 import PlaceAutocompleteInput from '@/components/PlaceAutocompleteInput';
+
+type IconName = ComponentProps<typeof Ionicons>['name'];
 import { useAuth } from '@/context/AuthContext';
 import { getPlaceLatLng, PlacePrediction } from '@/services/places';
 import { actualizarPerfil, actualizarRol, obtenerMiPerfil } from '@/services/usuarios';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
     ActivityIndicator,
     Alert,
-    SafeAreaView,
     ScrollView,
     StyleSheet,
     Switch,
@@ -16,6 +21,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const DARK_C = {
   bg:          '#131517',
@@ -43,16 +49,10 @@ const LIGHT_C = {
   iconMuted: '#9099A6',
 };
 
-// Tipo de usuario legible
-const ROLE_LABEL: Record<string, string> = {
-  CONDUCTOR: 'Conductor',
-  PASAJERO:  'Pasajero',
-};
-
 // Sección de ítems del perfil
 function Section({ title, items }: {
   title?: string;
-  items: { icon: string; label: string; onPress?: () => void }[];
+  items: { icon: IconName; label: string; onPress?: () => void }[];
 }) {
   const { isDark } = useAppTheme();
   const C = isDark ? DARK_C : LIGHT_C;
@@ -71,7 +71,7 @@ function Section({ title, items }: {
             >
               <View style={s.rowLeft}>
                 <View style={s.iconBox}>
-                  <Text style={s.iconText}>{item.icon}</Text>
+                  <Ionicons name={item.icon} size={18} color={C.accentGreen} />
                 </View>
                 <Text style={s.rowLabel}>{item.label}</Text>
               </View>
@@ -87,6 +87,14 @@ function Section({ title, items }: {
   );
 }
 
+// Algunas cuentas de prueba quedaron con "string" guardado como dirección
+// (el placeholder de ejemplo de Swagger, guardado sin editar al probar el
+// endpoint). Se trata igual que si no hubiera dirección, en vez de
+// mostrarlo tal cual.
+function esDireccionValida(v: string | null | undefined): v is string {
+  return !!v && v.trim().toLowerCase() !== 'string';
+}
+
 // Fila de dirección guardada (casa/trabajo), editable inline con autocompletado.
 function DireccionRow({
   icon,
@@ -97,7 +105,7 @@ function DireccionRow({
   guardando,
   onGuardar,
 }: {
-  icon: string;
+  icon: IconName;
   label: string;
   direccion: string | null | undefined;
   lat: number | null | undefined;
@@ -106,20 +114,24 @@ function DireccionRow({
   onGuardar: (texto: string, lat: number, lng: number) => Promise<void>;
 }) {
   const { isDark } = useAppTheme();
+  const { t } = useTranslation();
   const C = isDark ? DARK_C : LIGHT_C;
   const s = useMemo(() => createStyles(C), [C]);
+  const direccionValida = esDireccionValida(direccion) ? direccion : null;
   const [editando, setEditando]         = useState(false);
-  const [texto, setTexto]               = useState(direccion ?? '');
+  const [texto, setTexto]               = useState(direccionValida ?? '');
   // Se inicializa con las coordenadas ya guardadas: si el usuario abre y
   // guarda sin tocar nada, no hace falta volver a seleccionar de la lista.
+  // Si la dirección era la basura de "string", las coordenadas que la
+  // acompañan tampoco sirven, así que se descartan junto con el texto.
   const [coords, setCoords]             = useState<{ lat: number; lng: number } | null>(
-    lat != null && lng != null ? { lat, lng } : null,
+    direccionValida && lat != null && lng != null ? { lat, lng } : null,
   );
   const [resolviendo, setResolviendo]   = useState(false);
 
   useEffect(() => {
-    setTexto(direccion ?? '');
-    setCoords(lat != null && lng != null ? { lat, lng } : null);
+    setTexto(direccionValida ?? '');
+    setCoords(direccionValida && lat != null && lng != null ? { lat, lng } : null);
   }, [direccion, lat, lng]);
 
   const handleChangeText = (t: string) => {
@@ -136,7 +148,7 @@ function DireccionRow({
       setCoords(ll);
     } catch {
       setCoords(null);
-      Alert.alert('No se pudo ubicar esa dirección', 'Intenta seleccionarla de nuevo.');
+      Alert.alert(t('profile.noSePudoUbicarTitle'), t('profile.noSePudoUbicarMsg'));
     } finally {
       setResolviendo(false);
     }
@@ -144,7 +156,7 @@ function DireccionRow({
 
   const handleGuardar = async () => {
     if (!coords) {
-      Alert.alert('Selecciona una dirección', 'Elige una opción de la lista para poder guardarla.');
+      Alert.alert(t('profile.seleccionaDireccionTitle'), t('profile.seleccionaDireccionMsg'));
       return;
     }
     await onGuardar(texto, coords.lat, coords.lng);
@@ -157,23 +169,23 @@ function DireccionRow({
       <View style={s.direccionEditWrap}>
         <PlaceAutocompleteInput
           label={label}
-          placeholder={`Dirección de ${label.toLowerCase()}`}
+          placeholder={`${t('profile.direccionDe')} ${label.toLowerCase()}`}
           value={texto}
           onChangeText={handleChangeText}
           onSelectPlace={handleSelectPlace}
-          icon={icon}
+          icon={<Ionicons name={icon} size={16} color={C.accentGreen} />}
         />
         <View style={s.direccionEditBtns}>
           <TouchableOpacity
             style={s.direccionCancelBtn}
             onPress={() => {
               setEditando(false);
-              setTexto(direccion ?? '');
-              setCoords(lat != null && lng != null ? { lat, lng } : null);
+              setTexto(direccionValida ?? '');
+              setCoords(direccionValida && lat != null && lng != null ? { lat, lng } : null);
             }}
             activeOpacity={0.7}
           >
-            <Text style={s.direccionCancelText}>Cancelar</Text>
+            <Text style={s.direccionCancelText}>{t('common.cancel')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[s.direccionSaveBtn, bloqueado && { opacity: 0.6 }]}
@@ -183,7 +195,7 @@ function DireccionRow({
           >
             {bloqueado
               ? <ActivityIndicator size="small" color="#0A0A0A" />
-              : <Text style={s.direccionSaveText}>Guardar</Text>}
+              : <Text style={s.direccionSaveText}>{t('common.save')}</Text>}
           </TouchableOpacity>
         </View>
       </View>
@@ -194,12 +206,12 @@ function DireccionRow({
     <TouchableOpacity style={s.row} onPress={() => setEditando(true)} activeOpacity={0.7}>
       <View style={s.rowLeft}>
         <View style={s.iconBox}>
-          <Text style={s.iconText}>{icon}</Text>
+          <Ionicons name={icon} size={18} color={C.accentGreen} />
         </View>
         <View>
           <Text style={s.rowLabel}>{label}</Text>
           <Text style={s.direccionValue} numberOfLines={1}>
-            {direccion ?? 'Toca para agregar'}
+            {direccionValida ?? t('profile.tocaParaAgregar')}
           </Text>
         </View>
       </View>
@@ -209,7 +221,9 @@ function DireccionRow({
 }
 
 export default function ProfileScreen() {
+  const { t } = useTranslation();
   const { isDark, mode, setMode } = useAppTheme();
+  const { mode: languageMode, setMode: setLanguageMode } = useLanguage();
   const C = isDark ? DARK_C : LIGHT_C;
   const s = useMemo(() => createStyles(C), [C]);
   const {
@@ -227,6 +241,7 @@ export default function ProfileScreen() {
     nombre: string; apellido: string; fotoPerfil: string | null; rol: string;
     direccionCasa?: string | null; casaLat?: number | null; casaLng?: number | null;
     direccionTrabajo?: string | null; trabajoLat?: number | null; trabajoLng?: number | null;
+    calificacionPromedio?: number | null; totalCalificaciones?: number | null;
   } | null>(null);
   const [guardandoCasa, setGuardandoCasa]       = useState(false);
   const [guardandoTrabajo, setGuardandoTrabajo] = useState(false);
@@ -253,7 +268,7 @@ export default function ProfileScreen() {
       });
       setPerfil(actualizado);
     } catch (e: any) {
-      Alert.alert('No se pudo guardar', e?.message ?? 'Inténtalo de nuevo');
+      Alert.alert(t('profile.noSePudoGuardarTitle'), e?.message ?? t('profile.intentaDeNuevo'));
     } finally {
       setGuardandoCasa(false);
     }
@@ -276,7 +291,7 @@ export default function ProfileScreen() {
       });
       setPerfil(actualizado);
     } catch (e: any) {
-      Alert.alert('No se pudo guardar', e?.message ?? 'Inténtalo de nuevo');
+      Alert.alert(t('profile.noSePudoGuardarTitle'), e?.message ?? t('profile.intentaDeNuevo'));
     } finally {
       setGuardandoTrabajo(false);
     }
@@ -291,7 +306,7 @@ export default function ProfileScreen() {
       setPerfil(actualizado);
       actualizarUsuarioLocal({ rol: actualizado.rol });
     } catch (e: any) {
-      Alert.alert('No se pudo cambiar el rol', e?.message ?? 'Inténtalo de nuevo');
+      Alert.alert(t('profile.noSePudoCambiarRol'), e?.message ?? t('profile.intentaDeNuevo'));
     } finally {
       setCambiandoRol(false);
     }
@@ -302,8 +317,8 @@ export default function ProfileScreen() {
       const ok = await habilitarBiometria();
       if (!ok) {
         Alert.alert(
-          'No se pudo activar',
-          'No se pudo verificar tu identidad. Inténtalo de nuevo.',
+          t('profile.noSePudoActivarTitle'),
+          t('profile.noSePudoActivarMsg'),
         );
       }
     } else {
@@ -313,7 +328,9 @@ export default function ProfileScreen() {
 
   const nombre   = usuario?.nombre   ?? 'Usuario';
   const email    = usuario?.email    ?? '—';
-  const rol      = usuario?.rol      ? ROLE_LABEL[usuario.rol] ?? usuario.rol : '—';
+  const rol      = usuario?.rol === 'CONDUCTOR' ? t('profile.roleConductor')
+                  : usuario?.rol === 'PASAJERO' ? t('profile.rolePasajero')
+                  : usuario?.rol ?? '—';
   const inicial  = nombre.charAt(0).toUpperCase();
 
   const handleLogout = async () => {
@@ -326,7 +343,7 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
         {/* ── TÍTULO ─────────────────────────────────────────────────────── */}
-        <Text style={s.pageTitle}>My Profile</Text>
+        <Text style={s.pageTitle}>{t('profile.pageTitle')}</Text>
 
         {/* ── TARJETA USUARIO ────────────────────────────────────────────── */}
         <View style={s.section}>
@@ -343,6 +360,12 @@ export default function ProfileScreen() {
                   <View style={s.roleDot} />
                   <Text style={s.roleText}>{rol}</Text>
                 </View>
+                {perfil?.totalCalificaciones ? (
+                  <Text style={s.ratingText}>
+                    ★ {perfil.calificacionPromedio?.toFixed(1)} · {perfil.totalCalificaciones}{' '}
+                    {perfil.totalCalificaciones === 1 ? t('profile.calificacionSingular') : t('profile.calificacionPlural')}
+                  </Text>
+                ) : null}
               </View>
               <Text style={s.chevron}>›</Text>
             </TouchableOpacity>
@@ -351,7 +374,7 @@ export default function ProfileScreen() {
 
         {/* ── TIPO DE CUENTA: cambiar entre Conductor y Pasajero ───────────── */}
         <View style={s.section}>
-          <Text style={s.sectionTitle}>Tipo de cuenta</Text>
+          <Text style={s.sectionTitle}>{t('profile.accountType')}</Text>
           <View style={s.card}>
             <View style={s.rolRow}>
               {(['PASAJERO', 'CONDUCTOR'] as const).map(r => {
@@ -368,7 +391,7 @@ export default function ProfileScreen() {
                       <ActivityIndicator size="small" color={C.accentGreen} />
                     ) : (
                       <Text style={[s.rolBtnText, activo && s.rolBtnTextActive]}>
-                        {r === 'PASAJERO' ? 'Pasajero' : 'Conductor'}
+                        {r === 'PASAJERO' ? t('profile.rolePasajero') : t('profile.roleConductor')}
                       </Text>
                     )}
                   </TouchableOpacity>
@@ -377,8 +400,8 @@ export default function ProfileScreen() {
             </View>
             <Text style={s.rolHint}>
               {perfil?.rol === 'CONDUCTOR'
-                ? 'Como conductor puedes registrar vehículos y publicar viajes.'
-                : 'Como pasajero puedes ver y reservar viajes disponibles.'}
+                ? t('profile.rolHintConductor')
+                : t('profile.rolHintPasajero')}
             </Text>
           </View>
         </View>
@@ -387,18 +410,18 @@ export default function ProfileScreen() {
         {perfil?.rol === 'CONDUCTOR' && (
           <Section
             items={[
-              { icon: '🚗', label: 'Mis Vehículos', onPress: () => router.push('/vehicles') },
+              { icon: 'car-outline', label: t('profile.misVehiculos'), onPress: () => router.push('/vehicles') },
             ]}
           />
         )}
 
         {/* ── DIRECCIONES GUARDADAS ──────────────────────────────────────── */}
         <View style={s.section}>
-          <Text style={s.sectionTitle}>Direcciones guardadas</Text>
+          <Text style={s.sectionTitle}>{t('profile.direccionesGuardadas')}</Text>
           <View style={s.card}>
             <DireccionRow
-              icon="🏠"
-              label="Casa"
+              icon="home-outline"
+              label={t('profile.casa')}
               direccion={perfil?.direccionCasa}
               lat={perfil?.casaLat}
               lng={perfil?.casaLng}
@@ -407,8 +430,8 @@ export default function ProfileScreen() {
             />
             <View style={s.divider} />
             <DireccionRow
-              icon="💼"
-              label="Trabajo / Estudio"
+              icon="briefcase-outline"
+              label={t('profile.trabajoEstudio')}
               direccion={perfil?.direccionTrabajo}
               lat={perfil?.trabajoLat}
               lng={perfil?.trabajoLng}
@@ -418,43 +441,12 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-      
-
-        {/* ── APARIENCIA ─────────────────────────────────────────────────── */}
-        <View style={s.section}>
-          <Text style={s.sectionTitle}>Apariencia</Text>
-          <View style={s.card}>
-            <View style={s.temaRow}>
-              {([
-                { value: 'auto',  label: 'Automático', icon: '🕒' },
-                { value: 'light', label: 'Claro',       icon: '☀️' },
-                { value: 'dark',  label: 'Oscuro',      icon: '🌙' },
-              ] as const).map((opcion) => {
-                const activo = mode === opcion.value;
-                return (
-                  <TouchableOpacity
-                    key={opcion.value}
-                    style={[s.temaOpcion, activo && s.temaOpcionActiva]}
-                    onPress={() => setMode(opcion.value)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={s.temaIcono}>{opcion.icon}</Text>
-                    <Text style={[s.temaLabel, activo && s.temaLabelActivo]}>
-                      {opcion.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            {mode === 'auto' && (
-              <Text style={s.temaHint}>
-                Cambia solo entre 6:00 a. m. y 6:00 p. m.
-              </Text>
-            )}
-          </View>
-        </View>
-
-       
+        {/* ── AYUDA ──────────────────────────────────────────────────────── */}
+        <Section
+          items={[
+            { icon: 'help-buoy-outline', label: t('profile.ayuda'), onPress: () => router.push('/help') },
+          ]}
+        />
 
         {/* ── SEGURIDAD / BIOMETRÍA ──────────────────────────────────────── */}
         {biometricDisponible && (
@@ -463,9 +455,9 @@ export default function ProfileScreen() {
               <View style={s.row}>
                 <View style={s.rowLeft}>
                   <View style={s.iconBox}>
-                    <Text style={s.iconText}>🔒</Text>
+                    <Ionicons name="lock-closed-outline" size={18} color={C.accentGreen} />
                   </View>
-                  <Text style={s.rowLabel}>Inicio de sesión biométrico</Text>
+                  <Text style={s.rowLabel}>{t('profile.inicioSesionBiometrico')}</Text>
                 </View>
                 <Switch
                   value={biometricActivada}
@@ -478,19 +470,72 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* ── SOPORTE ────────────────────────────────────────────────────── */}
-        <Section
-          title="Support"
-          items={[
-            { icon: '💬', label: 'Help centre',  onPress: () => {} },
-            { icon: '🚩', label: 'Report a bug', onPress: () => {} },
-          ]}
-        />
+        {/* ── APARIENCIA ─────────────────────────────────────────────────── */}
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>{t('profile.appearance')}</Text>
+          <View style={s.card}>
+            <View style={s.temaRow}>
+              {([
+                { value: 'auto',  label: t('profile.appearanceAuto'), icon: 'time-outline' as IconName },
+                { value: 'light', label: t('profile.appearanceLight'), icon: 'sunny-outline' as IconName },
+                { value: 'dark',  label: t('profile.appearanceDark'), icon: 'moon-outline' as IconName },
+              ] as const).map((opcion) => {
+                const activo = mode === opcion.value;
+                return (
+                  <TouchableOpacity
+                    key={opcion.value}
+                    style={[s.temaOpcion, activo && s.temaOpcionActiva]}
+                    onPress={() => setMode(opcion.value)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name={opcion.icon} size={20} color={C.accentGreen} />
+                    <Text style={[s.temaLabel, activo && s.temaLabelActivo]}>
+                      {opcion.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            {mode === 'auto' && (
+              <Text style={s.temaHint}>
+                {t('profile.appearanceHint')}
+              </Text>
+            )}
+          </View>
+        </View>
+
+        {/* ── IDIOMA ─────────────────────────────────────────────────────── */}
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>Idioma / Language</Text>
+          <View style={s.card}>
+            <View style={s.temaRow}>
+              {([
+                { value: 'es',   label: 'Español',     icon: '🇪🇸' },
+                { value: 'en',   label: 'English',     icon: '🇺🇸' },
+              ] as const).map((opcion) => {
+                const activo = languageMode === opcion.value;
+                return (
+                  <TouchableOpacity
+                    key={opcion.value}
+                    style={[s.temaOpcion, activo && s.temaOpcionActiva]}
+                    onPress={() => setLanguageMode(opcion.value)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={s.temaIcono}>{opcion.icon}</Text>
+                    <Text style={[s.temaLabel, activo && s.temaLabelActivo]}>
+                      {opcion.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        </View>
 
         {/* ── LOG OUT ────────────────────────────────────────────────────── */}
         <TouchableOpacity style={s.logoutBtn} onPress={handleLogout} activeOpacity={0.7}>
           <Text style={s.logoutIcon}>⎋</Text>
-          <Text style={s.logoutText}>Log out</Text>
+          <Text style={s.logoutText}>{t('profile.logOut')}</Text>
         </TouchableOpacity>
 
       </ScrollView>
@@ -651,6 +696,7 @@ function createStyles(C: any) {
   },
   roleDot:  { width: 6, height: 6, borderRadius: 3, backgroundColor: C.accentGreen },
   roleText: { fontSize: 11, fontWeight: '600', color: C.accentGreen },
+  ratingText: { fontSize: 12, fontWeight: '600', color: '#F5B400', marginTop: 4 },
 
   // Direcciones guardadas
   direccionValue: { fontSize: 12, color: C.textSub, marginTop: 2, maxWidth: 220 },

@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Login",
-    "slug": "Login",
+    "name": "WheelTrees",
+    "slug": "WheelTrees",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -17,7 +17,6 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "config": {
         "googleMaps": {
@@ -41,6 +40,9 @@
     },
     "plugins": [
       "expo-router",
+      "expo-image",
+      "expo-secure-store",
+      "expo-web-browser",
       [
         "expo-splash-screen",
         {
@@ -65,6 +67,13 @@
           "locationAlwaysAndWhenInUsePermission": "WheelTrees necesita tu ubicación para mostrarte en el mapa y trackear el viaje en tiempo real.",
           "locationWhenInUsePermission": "WheelTrees necesita tu ubicación para mostrarte en el mapa y trackear el viaje en tiempo real.",
           "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      "expo-localization",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "default"
         }
       ]
     ],

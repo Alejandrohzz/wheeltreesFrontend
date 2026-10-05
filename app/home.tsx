@@ -1,14 +1,13 @@
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
+import { CalificarModal } from '@/components/CalificarModal';
+import { CalificacionPendiente, obtenerPendientes } from '@/services/calificaciones';
 import { getRoute, LatLng, RouteInfo } from '@/services/directions';
 import { PlaceLatLng } from '@/services/places';
-import { misReservas, solicitarReserva } from '@/services/reservas';
-import {
-  conectarTracking,
-  desconectarTracking,
-  enviarUbicacion,
-  suscribirseAUbicacion,
-} from '@/services/tracking';
+import { misReservas, reservasDeViaje, solicitarReserva } from '@/services/reservas';
+import BadgeContador from '@/components/BadgeContador';
+import { useContadores } from '@/hooks/useContadores';
+import { useUbicacionViaje } from '@/hooks/useUbicacionViaje';
 import { Viaje } from '@/services/types';
 import {
   completarViaje,
@@ -21,19 +20,20 @@ import { useFocusEffect } from "expo-router/react-navigation";
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
   Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const DARK_C = {
   bg:          '#131517',
@@ -41,6 +41,7 @@ const DARK_C = {
   border:      '#2E343C',
   text:        '#FFFFFF',
   textMuted:   '#6B7785',
+  textSub:     '#9BA3AD',
   accentGreen: '#3DBE7A',
   accent:      '#4A90D9',
   iconMuted:   '#4A5160',
@@ -52,6 +53,7 @@ const LIGHT_C = {
   border: '#DDE1E6',
   text: '#11181C',
   textMuted: '#7A8593',
+  textSub: '#5B6472',
   accentGreen: '#3DBE7A',
   accent: '#4A90D9',
   iconMuted: '#9099A6',
@@ -121,6 +123,9 @@ function MapBackground({
       style={StyleSheet.absoluteFill}
       provider={mapProvider}
       customMapStyle={isDark ? DARK_MAP_STYLE : []}
+      // Apple Maps (iOS) ignora customMapStyle y sigue el tema del sistema:
+      // se fuerza al tema de la app para que no salga oscuro en modo claro.
+      userInterfaceStyle={isDark ? 'dark' : 'light'}
       initialRegion={{
         latitude: 4.711,
         longitude: -74.0721,
@@ -250,13 +255,58 @@ function MapBackground({
   );
 }
 
+type CalificacionEnriquecida = {
+  reservaId: string;
+  viajeId: string;
+  nombre: string;
+  rol: 'CONDUCTOR' | 'PASAJERO';
+};
+
+/**
+ * Completa nombre y rol de a quién se califica usando las reservas:
+ * - Conductor (puede listar las reservas de su viaje): ve a TODOS los pasajeros que abordaron.
+ * - Pasajero: ve al conductor de su reserva.
+ */
+async function enriquecerPendientes(pendientes: CalificacionPendiente[]): Promise<CalificacionEnriquecida[]> {
+  if (pendientes.length === 0) return [];
+  const salida: CalificacionEnriquecida[] = [];
+  const viajeIds = Array.from(new Set(pendientes.map((p) => p.viajeId)));
+  let mias: Awaited<ReturnType<typeof misReservas>> = [];
+  try { mias = await misReservas(); } catch {}
+
+  for (const viajeId of viajeIds) {
+    const delViaje = pendientes.filter((p) => p.viajeId === viajeId);
+    let reservasViaje: Awaited<ReturnType<typeof reservasDeViaje>> | null = null;
+    try { reservasViaje = await reservasDeViaje(viajeId); } catch { reservasViaje = null; }
+
+    if (reservasViaje) {
+      // Soy el conductor de este viaje: todos los pasajeros que viajaron.
+      const idsPendientes = new Set(delViaje.map((p) => p.reservaId));
+      const lista = reservasViaje.filter(
+        (r) => idsPendientes.has(r.id) || (r.abordo === true && ['COMPLETADA', 'CONFIRMADA'].includes(r.estado)),
+      );
+      lista.forEach((r) => salida.push({ reservaId: r.id, viajeId, nombre: r.pasajeroNombre || 'Pasajero', rol: 'PASAJERO' }));
+    } else {
+      // Soy pasajero: califico al conductor.
+      delViaje.forEach((p) => {
+        const r = mias.find((m) => m.id === p.reservaId);
+        const nombre = r?.conductorNombre || (p as any).aCalificarNombre || 'Conductor';
+        salida.push({ reservaId: p.reservaId, viajeId, nombre, rol: 'CONDUCTOR' });
+      });
+    }
+  }
+  return salida;
+}
+
 export default function HomeScreen() {
+  const { t } = useTranslation();
   const { isDark } = useAppTheme();
   const C = isDark ? DARK_C : LIGHT_C;
   const s = useMemo(() => createStyles(C), [C]);
   const { usuario } = useAuth();
   const router = useRouter();
   const mapRef = useRef<any>(null);
+  const insets = useSafeAreaInsets();
 
   const [activeTab, setActiveTab] = useState<
     'map' | 'locate' | 'profile'
@@ -306,9 +356,6 @@ export default function HomeScreen() {
   const [rutaActivaCoords, setRutaActivaCoords] =
     useState<LatLng[]>([]);
 
-  const [compartiendoUbicacion, setCompartiendoUbicacion] =
-    useState(false);
-
   const [finalizandoViaje, setFinalizandoViaje] =
     useState(false);
 
@@ -319,7 +366,119 @@ export default function HomeScreen() {
   const esConductor = usuario?.rol === 'CONDUCTOR';
   const esPasajero = usuario?.rol === 'PASAJERO';
 
+  // Contadores de los íconos (chat y notificaciones) y badge del ícono de la app.
+  const { chats: chatsSinLeer, notificaciones: notifSinVer, refrescar: refrescarContadores } =
+    useContadores(esConductor, !!usuario && (esConductor || esPasajero));
+
+  // Contador del ícono de reservas (solo pasajero): reservas pendientes de
+  // respuesta + confirmadas. Se refresca al volver a la pantalla y cada 15 s.
+  const [reservasActivas, setReservasActivas] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      if (!esPasajero) {
+        setReservasActivas(0);
+        return;
+      }
+      let cancelado = false;
+      const cargarReservas = async () => {
+        try {
+          const reservas = await misReservas();
+          if (!cancelado) {
+            setReservasActivas(
+              reservas.filter((r) => ['PENDIENTE', 'CONFIRMADA'].includes(r.estado)).length
+            );
+          }
+        } catch {
+          // Silencioso: se conserva el último valor
+        }
+      };
+      cargarReservas();
+      const id = setInterval(cargarReservas, 15000);
+      return () => {
+        cancelado = true;
+        clearInterval(id);
+      };
+    }, [esPasajero])
+  );
+
+  // Seguimiento en vivo del viaje EN_CURSO (bidireccional). Solo comparto mi
+  // GPS desde home cuando está en primer plano, para no duplicar con las
+  // pantallas de seguimiento (trip-tracking / trip-in-progress) que se abren encima.
+  const [homeEnFoco, setHomeEnFoco] = useState(true);
+  useFocusEffect(
+    useCallback(() => {
+      setHomeEnFoco(true);
+      refrescarContadores();
+      return () => setHomeEnFoco(false);
+    }, [refrescarContadores])
+  );
+
+  const {
+    conductor: posConductor,
+    miPosicion,
+    estado: estadoLive,
+    compartiendo: compartiendoUbicacion,
+  } = useUbicacionViaje({
+    viajeId: viajeActivo?.id,
+    rol: esConductor ? 'CONDUCTOR' : 'PASAJERO',
+    estadoInicial: viajeActivo?.estado,
+    compartir: homeEnFoco,
+  });
+
+  // Posición que se pinta en el mapa: el conductor ve su propio vehículo;
+  // el pasajero ve al conductor.
+  useEffect(() => {
+    const p = esConductor ? miPosicion ?? posConductor : posConductor;
+    if (p) setVehiculoActivo({ latitude: p.lat, longitude: p.lng });
+  }, [esConductor, miPosicion?.lat, miPosicion?.lng, posConductor?.lat, posConductor?.lng]);
+
+  // Si el conductor finaliza o cancela, se retira el viaje del mapa.
+  useEffect(() => {
+    if (viajeActivo && estadoLive && estadoLive !== 'EN_CURSO' && estadoLive !== 'PROGRAMADO') {
+      setViajeActivo(null);
+      setVehiculoActivo(null);
+      setRutaActivaCoords([]);
+    }
+  }, [estadoLive]);
+
   const nombreMostrado = usuario?.nombre ?? 'Usuario';
+
+  // Cola de viajes completados donde falta calificar a la contraparte.
+  // Se revisa cada vez que la pantalla vuelve a tomar foco (p. ej. justo
+  // después de finalizar un viaje), y se muestra el modal de a uno.
+  const [colaCalificaciones, setColaCalificaciones] = useState<CalificacionEnriquecida[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelado = false;
+      (async () => {
+        try {
+          const pendientes = await obtenerPendientes();
+          const enriquecidas = await enriquecerPendientes(pendientes);
+          if (!cancelado) setColaCalificaciones(enriquecidas);
+        } catch {
+          // Silencioso: no bloquea el resto de la pantalla si falla.
+        }
+      })();
+      return () => {
+        cancelado = true;
+      };
+    }, [])
+  );
+
+  // Se agrupa por viaje: el pasajero ve al conductor; el conductor ve a todos
+  // los pasajeros del mismo viaje en un solo modal.
+  const calificacionActual = colaCalificaciones[0] ?? null;
+  const personasACalificar = calificacionActual
+    ? colaCalificaciones
+        .filter((c) => c.viajeId === calificacionActual.viajeId)
+        .map((c) => ({ reservaId: c.reservaId, nombre: c.nombre, rol: c.rol }))
+    : [];
+
+  const handleCalificacionHecha = () => {
+    if (!calificacionActual) return;
+    setColaCalificaciones((prev) => prev.filter((c) => c.viajeId !== calificacionActual.viajeId));
+  };
 
   // Carga los viajes activos con coordenadas y calcula la ruta
   useFocusEffect(
@@ -339,7 +498,13 @@ export default function HomeScreen() {
               v.origenLng != null
           );
 
-          setViajesPublicados(conCoords);
+          // OJO: no se llama setViajesPublicados(conCoords) aquí todavía.
+          // Antes se pintaban los marcadores sin ruta y luego, al terminar
+          // de calcular las rutas, se volvían a pintar con la polilínea —
+          // ese doble render hacía que las líneas de ruta parpadearan
+          // (desaparecían y volvían a aparecer) cada vez que la pantalla
+          // recuperaba el foco, por ejemplo al volver de "Mis viajes". Se
+          // actualiza una sola vez, ya con todo listo, más abajo.
 
           const conRuta = await Promise.all(
             conCoords.map(async (v) => {
@@ -393,7 +558,7 @@ export default function HomeScreen() {
     useCallback(() => {
       let cancelado = false;
 
-      (async () => {
+      const detectar = async () => {
         try {
           let activo: Viaje | null = null;
 
@@ -422,15 +587,18 @@ export default function HomeScreen() {
 
           if (cancelado) return;
 
-          setViajeActivo(activo);
+          setViajeActivo((prev) =>
+            prev?.id === activo?.id && prev?.estado === activo?.estado ? prev : activo
+          );
 
           if (
             activo?.ubicacionLat != null &&
             activo?.ubicacionLng != null
           ) {
-            setVehiculoActivo({
-              latitude: activo.ubicacionLat,
-              longitude: activo.ubicacionLng,
+            // Solo como posición inicial: no pisa la posición en vivo.
+            setVehiculoActivo((prev) => prev ?? {
+              latitude: activo!.ubicacionLat!,
+              longitude: activo!.ubicacionLng!,
             });
           }
 
@@ -442,10 +610,16 @@ export default function HomeScreen() {
         } catch {
           // Silencioso: sin viaje en curso detectado
         }
-      })();
+      };
+
+      detectar();
+      // Revisa cada 10 s: así, si el conductor inicia el viaje mientras el
+      // pasajero ya está en home, el seguimiento arranca solo.
+      const id = setInterval(detectar, 10000);
 
       return () => {
         cancelado = true;
+        clearInterval(id);
       };
     }, [esConductor, esPasajero])
   );
@@ -483,84 +657,6 @@ export default function HomeScreen() {
     };
   }, [viajeActivo?.id]);
 
-  // Conexión en vivo: mientras haya un viaje EN_CURSO, se escucha (y si
-  // soy el conductor, también se publica) la posición GPS en tiempo real
-  // directamente sobre el mapa de home.
-  useEffect(() => {
-    if (!viajeActivo || Platform.OS === 'web') return;
-
-    let activoEfecto = true;
-    let unsuscribir: (() => void) | null = null;
-    let watcher: Location.LocationSubscription | null = null;
-
-    conectarTracking(
-      async () => {
-        if (!activoEfecto) return;
-
-        unsuscribir = suscribirseAUbicacion(
-          viajeActivo.id,
-          (e) => {
-            if (e.lat != null && e.lng != null) {
-              setVehiculoActivo({
-                latitude: e.lat,
-                longitude: e.lng,
-              });
-            }
-
-            if (e.estado !== 'EN_CURSO') {
-              // El conductor finalizó o canceló: se retira del mapa.
-              setViajeActivo(null);
-              setVehiculoActivo(null);
-              setRutaActivaCoords([]);
-            }
-          }
-        );
-
-        // Si soy el conductor de este viaje, además comparto mi GPS.
-        if (
-          esConductor &&
-          viajeActivo.conductorId === usuario?.id
-        ) {
-          const { status } =
-            await Location.requestForegroundPermissionsAsync();
-
-          if (status === 'granted' && activoEfecto) {
-            setCompartiendoUbicacion(true);
-
-            watcher = await Location.watchPositionAsync(
-              {
-                accuracy: Location.Accuracy.High,
-                timeInterval: 4000,
-                distanceInterval: 15,
-              },
-              (pos) => {
-                enviarUbicacion(
-                  viajeActivo.id,
-                  pos.coords.latitude,
-                  pos.coords.longitude
-                );
-                setVehiculoActivo({
-                  latitude: pos.coords.latitude,
-                  longitude: pos.coords.longitude,
-                });
-              }
-            );
-          }
-        }
-      },
-      () => {
-        // Error de conexión: se reintenta solo (reconnectDelay del cliente STOMP)
-      }
-    );
-
-    return () => {
-      activoEfecto = false;
-      watcher?.remove();
-      unsuscribir?.();
-      desconectarTracking();
-      setCompartiendoUbicacion(false);
-    };
-  }, [viajeActivo?.id, esConductor, usuario?.id]);
 
   // Centra el mapa sobre el vehículo en cuanto llega su primera posición
   // en vivo, y lo sigue suavemente en cada actualización posterior.
@@ -592,13 +688,35 @@ export default function HomeScreen() {
           return;
         }
 
+        // Centra el mapa en la ubicación actual (a menos que ya se haya
+        // centrado en el vehículo de un viaje en curso).
+        const centrarMapa = (lat: number, lng: number) => {
+          if (centradoInicialHecho.current) return;
+          const animar = () =>
+            mapRef.current?.animateToRegion(
+              { latitude: lat, longitude: lng, latitudeDelta: 0.02, longitudeDelta: 0.02 },
+              600
+            );
+          animar();
+          // Reintento por si el mapa aún no terminaba de cargar.
+          setTimeout(animar, 700);
+        };
+
+        // Posición rápida (caché) para que el mapa no se quede en Bogotá
+        // mientras el GPS obtiene la posición exacta.
+        const ultima = await Location.getLastKnownPositionAsync().catch(() => null);
+        if (ultima) centrarMapa(ultima.coords.latitude, ultima.coords.longitude);
+
         const pos =
-          await Location.getCurrentPositionAsync({});
+          await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
 
         setOrigenLL({
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
         });
+        centrarMapa(pos.coords.latitude, pos.coords.longitude);
       } catch {
         setOrigenLL(BOGOTA_FALLBACK);
       }
@@ -654,12 +772,12 @@ export default function HomeScreen() {
     if (!viajeActivo) return;
 
     Alert.alert(
-      'Finalizar viaje',
-      '¿Confirmas que el viaje terminó? Se marcará como completado.',
+      t('home.alertFinalizarTitle'),
+      t('home.alertFinalizarMessage'),
       [
-        { text: 'Cancelar', style: 'cancel' },
+        { text: t('home.alertCancelar'), style: 'cancel' },
         {
-          text: 'Finalizar',
+          text: t('home.alertFinalizarConfirm'),
           onPress: async () => {
             setFinalizandoViaje(true);
             try {
@@ -669,8 +787,8 @@ export default function HomeScreen() {
               setRutaActivaCoords([]);
             } catch (e: any) {
               Alert.alert(
-                'No se pudo finalizar',
-                e?.message ?? 'Inténtalo de nuevo'
+                t('home.alertNoSePudoTitle'),
+                e?.message ?? t('home.alertIntentaDeNuevo')
               );
             } finally {
               setFinalizandoViaje(false);
@@ -791,7 +909,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
 
           <Text style={s.greeting}>
-            Hello,{' '}
+            {t('home.greeting')}
             <Text style={s.greetingName}>
               {nombreMostrado}
             </Text>
@@ -810,6 +928,7 @@ export default function HomeScreen() {
               size={20}
               color={C.accentGreen}
             />
+            <BadgeContador n={chatsSinLeer} />
           </TouchableOpacity>
 
           {/* NOTIFICACIONES - CONDUCTOR (solicitudes) Y PASAJERO (viaje finalizado/cancelado) */}
@@ -826,6 +945,7 @@ export default function HomeScreen() {
                 size={20}
                 color={C.accentGreen}
               />
+              <BadgeContador n={notifSinVer} />
             </TouchableOpacity>
           )}
 
@@ -843,6 +963,7 @@ export default function HomeScreen() {
                 size={20}
                 color={C.accentGreen}
               />
+              <BadgeContador n={reservasActivas} />
             </TouchableOpacity>
           )}
         </View>
@@ -864,11 +985,11 @@ export default function HomeScreen() {
             <Text style={s.trackingPillText} numberOfLines={1}>
               {esConductor
                 ? compartiendoUbicacion
-                  ? 'Compartiendo tu ubicación en vivo'
-                  : 'Viaje en curso · conectando…'
+                  ? t('home.trackingCompartiendo')
+                  : t('home.trackingConectandoConductor')
                 : vehiculoActivo
-                ? `${viajeActivo.conductorNombre} va en camino · en vivo`
-                : 'Tu conductor va en camino · conectando…'}
+                ? t('home.trackingEnVivo', { nombre: viajeActivo.conductorNombre })
+                : t('home.trackingConectandoPasajero')}
             </Text>
 
             <Text style={s.trackingPillArrow}>›</Text>
@@ -889,7 +1010,7 @@ export default function HomeScreen() {
             {finalizandoViaje ? (
               <ActivityIndicator color="#0A0A0A" size="small" />
             ) : (
-              <Text style={s.finalizarPillText}>Finalizar viaje</Text>
+              <Text style={s.finalizarPillText}>{t('home.finalizarViaje')}</Text>
             )}
           </TouchableOpacity>
         )}
@@ -928,14 +1049,14 @@ export default function HomeScreen() {
       </SafeAreaView>
 
       {/* ── PANEL INFERIOR ───────────────────────────────────────────── */}
-      <View style={s.bottomSheet}>
+      <View style={[s.bottomSheet, { paddingBottom: 12 + insets.bottom }]}>
         <View style={s.pill} />
 
         {/* ── CONDUCTOR: accesos rápidos para publicar un viaje ────────── */}
         {esConductor && (
           <>
             <Text style={s.question}>
-              Where are you going to?
+              {t('home.whereGoing')}
             </Text>
 
             {!!rutaError && (
@@ -948,15 +1069,15 @@ export default function HomeScreen() {
               {[
                 {
                   label: 'Casa',
-                  icon: '🏠',
+                  icon: 'home-outline' as const,
                 },
                 {
                   label: 'Universidad',
-                  icon: '🎓',
+                  icon: 'school-outline' as const,
                 },
                 {
                   label: 'Trabajo',
-                  icon: '💼',
+                  icon: 'briefcase-outline' as const,
                 },
               ].map(({ label, icon }) => (
                 <TouchableOpacity
@@ -988,18 +1109,15 @@ export default function HomeScreen() {
                           String(UNIVERSIDAD.lat),
                         origenLng:
                           String(UNIVERSIDAD.lng),
-                        destinoDescripcion: label,
                       },
                     });
                   }}
                   activeOpacity={0.75}
                 >
-                  <Text style={s.quickIcon}>
-                    {icon}
-                  </Text>
+                  <Ionicons name={icon} size={20} color={C.accentGreen} />
 
                   <Text style={s.quickLabel}>
-                    {label}
+                    {label === 'Casa' ? t('home.quickCasa') : label === 'Universidad' ? t('home.quickUniversidad') : t('home.quickTrabajo')}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -1011,7 +1129,7 @@ export default function HomeScreen() {
         {esPasajero && (
           <>
             <Text style={s.question}>
-              Where are you going to?
+              {t('home.whereGoing')}
             </Text>
 
             <TouchableOpacity
@@ -1019,8 +1137,9 @@ export default function HomeScreen() {
               onPress={() => router.push('/available-trips')}
               activeOpacity={0.8}
             >
-              <Text style={s.buscarViajesIcon}>🔎</Text>
-              <Text style={s.buscarViajesText}>Ver viajes disponibles</Text>
+              {/* Mismo color que el texto del botón (antes era un emoji 🔎) */}
+              <Ionicons name="search" size={18} color="#0A0A0A" />
+              <Text style={s.buscarViajesText}>{t('home.verViajesDisponibles')}</Text>
             </TouchableOpacity>
           </>
         )}
@@ -1180,7 +1299,7 @@ export default function HomeScreen() {
                   <Text style={s.modalStat}>
                     {viajeSeleccionado.cuposDisponibles}/
                     {viajeSeleccionado.cuposTotales}{' '}
-                    cupos
+                    {t('home.cupos')}
                   </Text>
 
                   <Text style={s.modalStat}>
@@ -1211,7 +1330,7 @@ export default function HomeScreen() {
                       <Text
                         style={s.reservaOkText}
                       >
-                        ¡Reserva creada con éxito!
+                        {t('home.reservaExito')}
                       </Text>
 
                       <TouchableOpacity
@@ -1226,7 +1345,7 @@ export default function HomeScreen() {
                             s.reservarBtnText
                           }
                         >
-                          Cerrar
+                          {t('home.cerrar')}
                         </Text>
                       </TouchableOpacity>
                     </>
@@ -1234,7 +1353,7 @@ export default function HomeScreen() {
                     <>
                       <TextInput
                         style={s.notasInput}
-                        placeholder="Notas para el conductor (opcional)"
+                        placeholder={t('home.notasPlaceholder')}
                         placeholderTextColor={
                           C.textMuted
                         }
@@ -1250,9 +1369,7 @@ export default function HomeScreen() {
                           s.avisoCancelacion
                         }
                       >
-                        ⓘ Podrás cancelar esta
-                        reserva solo hasta 30
-                        minutos antes de la salida.
+                        {t('home.avisoCancelacion')}
                       </Text>
 
                       {!!reservaError && (
@@ -1286,7 +1403,7 @@ export default function HomeScreen() {
                               s.reservarBtnText
                             }
                           >
-                            Reservar cupo
+                            {t('home.reservarCupo')}
                           </Text>
                         )}
                       </TouchableOpacity>
@@ -1300,8 +1417,8 @@ export default function HomeScreen() {
                   >
                     {viajeSeleccionado.conductorId ===
                     usuario?.id
-                      ? 'Este es tu viaje publicado.'
-                      : 'Solo los pasajeros pueden reservar cupos en un viaje.'}
+                      ? t('home.esTuViaje')
+                      : t('home.soloPasajeros')}
                   </Text>
                 )}
 
@@ -1316,7 +1433,7 @@ export default function HomeScreen() {
                   }}
                 >
                   <Text style={s.clearIcon}>
-                    Cerrar
+                    {t('home.cerrar')}
                   </Text>
                 </Pressable>
               </>
@@ -1324,6 +1441,15 @@ export default function HomeScreen() {
           </View>
         </View>
       </Modal>
+
+      {calificacionActual && (
+        <CalificarModal
+          key={calificacionActual.viajeId}
+          visible
+          personas={personasACalificar}
+          onDone={handleCalificacionHecha}
+        />
+      )}
     </View>
   );
 }
@@ -1332,7 +1458,7 @@ function createStyles(C: any) {
   return StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: C.bg,
   },
 
   safeHeader: {
@@ -1354,7 +1480,7 @@ function createStyles(C: any) {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#2E343C',
+    backgroundColor: C.surface,
     borderWidth: 2,
     borderColor: C.accentGreen,
     alignItems: 'center',
@@ -1400,19 +1526,26 @@ function createStyles(C: any) {
     fontWeight: '700',
   },
 
+  // Fondo y texto salen del tema: antes el fondo era oscuro fijo y en modo
+  // claro el texto (casi negro) no se leía.
   trackingPill: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'center',
     gap: 8,
     marginTop: 14,
-    backgroundColor: 'rgba(19,21,23,0.9)',
+    backgroundColor: C.surface,
     borderWidth: 1,
     borderColor: C.accentGreen,
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 9,
     maxWidth: '86%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 6,
   },
 
   liveDot: {
@@ -1467,12 +1600,17 @@ function createStyles(C: any) {
     alignSelf: 'center',
     gap: 8,
     marginTop: 14,
-    backgroundColor: 'rgba(19,21,23,0.85)',
+    backgroundColor: C.surface,
     borderWidth: 1,
     borderColor: C.accentGreen,
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 6,
   },
 
   routePillIcon: {
@@ -1539,7 +1677,7 @@ function createStyles(C: any) {
 
   clearIcon: {
     fontSize: 13,
-    color: C.textMuted,
+    color: C.textSub,
     fontWeight: '600',
   },
 
@@ -1565,7 +1703,7 @@ function createStyles(C: any) {
   },
 
   modalSub: {
-    color: C.textMuted,
+    color: C.textSub,
     fontSize: 13,
     marginTop: 2,
     marginBottom: 14,
@@ -1605,13 +1743,13 @@ function createStyles(C: any) {
   },
 
   modalFecha: {
-    color: C.textMuted,
+    color: C.textSub,
     fontSize: 13,
     marginBottom: 14,
   },
 
   avisoCancelacion: {
-    color: C.textMuted,
+    color: C.textSub,
     fontSize: 12,
     marginBottom: 10,
     fontStyle: 'italic',
@@ -1651,7 +1789,7 @@ function createStyles(C: any) {
   },
 
   soloPasajerosText: {
-    color: C.textMuted,
+    color: C.textSub,
     fontSize: 13,
     textAlign: 'center',
     marginTop: 4,
@@ -1697,10 +1835,6 @@ function createStyles(C: any) {
     paddingVertical: 14,
     marginTop: 16,
     marginBottom: 20,
-  },
-
-  buscarViajesIcon: {
-    fontSize: 16,
   },
 
   buscarViajesText: {

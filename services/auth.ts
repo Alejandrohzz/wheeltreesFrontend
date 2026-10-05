@@ -94,3 +94,26 @@ export const login = (body: LoginRequest) =>
     method: 'POST',
     body:   JSON.stringify(body),
   });
+
+// ── Recuperación de contraseña ──────────────────────────────────────────
+
+/** POST /api/auth/recuperar-password/solicitar — manda el código OTP al correo. */
+export const solicitarRecuperacion = (email: string) =>
+  apiFetch<MensajeResponse>('/api/auth/recuperar-password/solicitar', {
+    method: 'POST',
+    body:   JSON.stringify({ email }),
+  });
+
+/** POST /api/auth/recuperar-password/verificar — valida el código antes de dejar escribir la nueva contraseña. */
+export const verificarCodigoRecuperacion = (email: string, codigoOtp: string) =>
+  apiFetch<MensajeResponse>('/api/auth/recuperar-password/verificar', {
+    method: 'POST',
+    body:   JSON.stringify({ email, codigoOtp }),
+  });
+
+/** POST /api/auth/recuperar-password/restablecer — cambia la contraseña con el código ya validado. */
+export const restablecerPassword = (email: string, codigoOtp: string, nuevaPassword: string) =>
+  apiFetch<MensajeResponse>('/api/auth/recuperar-password/restablecer', {
+    method: 'POST',
+    body:   JSON.stringify({ email, codigoOtp, nuevaPassword }),
+  });

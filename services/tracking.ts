@@ -2,11 +2,14 @@ import { Client, IMessage } from '@stomp/stompjs';
 import { apiFetch, BASE_URL, getToken } from './api';
 
 /**
- * Evento recibido por /topic/viaje.{id}.ubicacion. Sirve tanto para
- * posiciones GPS del conductor (lat/lng no nulos) como para avisos de
- * cambio de estado del viaje (iniciar/completar/cancelar), para que la
- * pantalla del pasajero sepa cuándo empieza y cuándo termina el
- * seguimiento sin necesidad de hacer polling.
+ * Evento de ubicación/estado de un viaje.
+ *
+ *  - Posiciones del conductor: llegan por /topic/viaje.{id}.ubicacion a todos
+ *    los participantes (rol ausente o 'CONDUCTOR').
+ *  - Posiciones de pasajeros: llegan SOLO al conductor, por la cola privada
+ *    /user/queue/ubicaciones-pasajeros (rol 'PASAJERO'), para que un pasajero
+ *    no vea dónde están los demás.
+ *  - Avisos de cambio de estado (iniciar/completar/cancelar): lat/lng nulos.
  */
 export interface UbicacionEvento {
   viajeId:        string;
@@ -14,16 +17,29 @@ export interface UbicacionEvento {
   lat:            number | null;
   lng:            number | null;
   actualizadaEn:  string | null; // ISO 8601
+  rol?:           'CONDUCTOR' | 'PASAJERO';
+  usuarioId?:     string;
+  nombre?:        string;
 }
 
-/** GET /api/viajes/{id}/ubicacion — última posición conocida (carga inicial / respaldo) */
+/** GET /api/viajes/{id}/ubicacion — última posición conocida del conductor (carga inicial / respaldo) */
 export const obtenerUbicacion = (viajeId: string) =>
   apiFetch<UbicacionEvento>(`/api/viajes/${viajeId}/ubicacion`);
 
 // ─────────────────────────────────────────────────────────────────────────
-// Cliente WebSocket/STOMP en tiempo real (independiente del de chat.ts,
-// así ambas conexiones pueden convivir sin pisarse).
+// Cliente WebSocket/STOMP compartido (independiente del de chat.ts).
+//
+// Varias pantallas pueden usar el seguimiento a la vez (home, seguimiento del
+// pasajero, viaje en curso del conductor). Antes cada una cerraba la conexión
+// de la otra al montarse/desmontarse; ahora es una única conexión con conteo
+// de usuarios: se abre con el primero y se cierra cuando sale el último.
 // ─────────────────────────────────────────────────────────────────────────
+
+export interface ManejadoresTracking {
+  onConnect: () => void;
+  onDisconnect?: () => void;
+  onError?: (err: string) => void;
+}
 
 function wsUrl(token: string): string {
   const base = BASE_URL.replace(/^http/, 'ws');
@@ -31,93 +47,115 @@ function wsUrl(token: string): string {
 }
 
 let client: Client | null = null;
+const manejadores = new Set<ManejadoresTracking>();
 
 /**
- * Abre la conexión STOMP para seguimiento de viaje.
- * onConnect se dispara cuando ya se puede suscribir/publicar.
+ * Registra un consumidor del seguimiento y abre la conexión si hace falta.
+ * Devuelve la función que lo libera (llámala en el cleanup del efecto).
+ * onConnect se dispara en la primera conexión y en cada reconexión: ahí hay
+ * que (re)suscribirse, porque STOMP pierde las suscripciones al caerse.
  */
-export async function conectarTracking(onConnect: () => void, onError?: (err: string) => void) {
-  const token = await getToken();
-  if (!token) {
-    onError?.('No hay sesión activa');
-    return null;
+export async function abrirTracking(h: ManejadoresTracking): Promise<() => void> {
+  manejadores.add(h);
+  const liberar = () => {
+    manejadores.delete(h);
+    if (manejadores.size === 0 && client) {
+      client.deactivate();
+      client = null;
+    }
+  };
+
+  if (!client) {
+    const token = await getToken();
+    if (!manejadores.has(h)) return () => {}; // se liberó mientras esperábamos el token
+    if (!token) {
+      h.onError?.('No hay sesión activa');
+      return liberar;
+    }
+
+    if (!client) {
+      const url = wsUrl(token);
+      if (__DEV__) console.log('🔌 Conectando tracking a', url);
+
+      client = new Client({
+        brokerURL: url,
+        // React Native: sin esto los frames STOMP llegan truncados/sin el
+        // byte NULL final y la conexión se queda en "conectando…".
+        forceBinaryWSFrames: true,
+        appendMissingNULLonIncoming: true,
+        reconnectDelay: 3000,
+        heartbeatIncoming: 10000,
+        heartbeatOutgoing: 10000,
+        debug: (msg) => { if (__DEV__) console.log('[STOMP-tracking]', msg); },
+        onConnect: () => {
+          if (__DEV__) console.log('🔌 Tracking conectado');
+          manejadores.forEach((m) => m.onConnect());
+        },
+        onStompError: (frame) => {
+          console.log('🔌 STOMP error (tracking):', frame.headers['message'], frame.body);
+          manejadores.forEach((m) => m.onError?.(frame.headers['message'] ?? 'Error de conexión'));
+        },
+        onWebSocketError: (event) => {
+          console.log('🔌 WebSocket error crudo (tracking):', JSON.stringify(event));
+          manejadores.forEach((m) => m.onError?.('No se pudo conectar al seguimiento en tiempo real'));
+        },
+        onWebSocketClose: (event) => {
+          console.log('🔌 WebSocket de tracking cerrado. Código:', event?.code, 'Razón:', event?.reason);
+          manejadores.forEach((m) => m.onDisconnect?.());
+        },
+      });
+      client.activate();
+    }
+  } else if (client.connected) {
+    // La conexión ya estaba abierta (la abrió otra pantalla): suscribe ya.
+    h.onConnect();
   }
 
-  // Si ya había un cliente activo (p. ej. porque el efecto que llama a esta
-  // función se disparó dos veces sin que se alcanzara a limpiar el
-  // anterior), lo desactivamos primero. Sin esto, quedaban dos sockets
-  // reintentando conexión en paralelo cada 3s indefinidamente, lo cual
-  // terminaba disparando un 429 (demasiadas conexiones) del lado de Azure.
-  if (client) {
-    client.deactivate();
-    client = null;
-  }
-
-  const url = wsUrl(token);
-  if (__DEV__) console.log('🔌 Conectando tracking a', url);
-
-  client = new Client({
-    brokerURL: url,
-    reconnectDelay: 3000,
-    heartbeatIncoming: 10000,
-    heartbeatOutgoing: 10000,
-    debug: (msg) => { if (__DEV__) console.log('[STOMP-tracking]', msg); },
-    onConnect: () => {
-      if (__DEV__) console.log('🔌 Tracking conectado');
-      onConnect();
-    },
-    onStompError: (frame) => {
-      console.log('🔌 STOMP error (tracking):', frame.headers['message'], frame.body);
-      onError?.(frame.headers['message'] ?? 'Error de conexión');
-    },
-    onWebSocketError: (event) => {
-      console.log('🔌 WebSocket error crudo (tracking):', JSON.stringify(event));
-      onError?.('No se pudo conectar al seguimiento en tiempo real');
-    },
-    onWebSocketClose: (event) => {
-      console.log('🔌 WebSocket de tracking cerrado. Código:', event?.code, 'Razón:', event?.reason);
-    },
-  });
-
-  client.activate();
-  return client;
+  return liberar;
 }
 
-/** Se suscribe a los eventos de ubicación/estado en vivo de un viaje puntual. */
-export function suscribirseAUbicacion(
-  viajeId: string,
-  onEvento: (e: UbicacionEvento) => void,
-) {
-  if (!client) return () => {};
+function suscribir(destino: string, onMsg: (frame: IMessage) => void) {
+  if (!client?.connected) return () => {};
+  const sub = client.subscribe(destino, onMsg);
+  return () => {
+    try { sub.unsubscribe(); } catch { /* conexión ya cerrada */ }
+  };
+}
 
-  const topic = `/topic/viaje.${viajeId}.ubicacion`;
-  const sub = client.subscribe(topic, (frame: IMessage) => {
+/** Ubicación del conductor y cambios de estado del viaje (todos los participantes). */
+export function suscribirseAUbicacion(viajeId: string, onEvento: (e: UbicacionEvento) => void) {
+  const quitarTopic = suscribir(`/topic/viaje.${viajeId}.ubicacion`, (frame) => {
     onEvento(JSON.parse(frame.body) as UbicacionEvento);
   });
 
   // Cola privada de errores de negocio (viaje no EN_CURSO, sin permiso, etc.)
-  const subErrores = client.subscribe('/user/queue/errores', (frame: IMessage) => {
-    const { mensaje } = JSON.parse(frame.body);
-    console.warn('Tracking error:', mensaje);
+  const quitarErrores = suscribir('/user/queue/errores', (frame) => {
+    try {
+      const { mensaje } = JSON.parse(frame.body);
+      console.warn('Tracking error:', mensaje);
+    } catch { /* ignorar */ }
   });
 
-  return () => {
-    sub.unsubscribe();
-    subErrores.unsubscribe();
-  };
+  return () => { quitarTopic(); quitarErrores(); };
 }
 
-/** El conductor publica su posición GPS actual (llega a todos los suscritos en vivo). */
-export function enviarUbicacion(viajeId: string, lat: number, lng: number) {
-  if (!client?.connected) return false;
-  client.publish({
-    destination: '/app/viaje.ubicacion',
-    body: JSON.stringify({ viajeId, lat, lng }),
+/** Solo conductor: posiciones en vivo de sus pasajeros (cola privada). */
+export function suscribirseAPasajeros(onEvento: (e: UbicacionEvento) => void) {
+  return suscribir('/user/queue/ubicaciones-pasajeros', (frame) => {
+    onEvento(JSON.parse(frame.body) as UbicacionEvento);
   });
+}
+
+function publicar(destination: string, viajeId: string, lat: number, lng: number) {
+  if (!client?.connected) return false;
+  client.publish({ destination, body: JSON.stringify({ viajeId, lat, lng }) });
   return true;
 }
 
-export function desconectarTracking() {
-  client?.deactivate();
-  client = null;
-}
+/** El conductor publica la posición del vehículo (llega a todos los del viaje). */
+export const enviarUbicacion = (viajeId: string, lat: number, lng: number) =>
+  publicar('/app/viaje.ubicacion', viajeId, lat, lng);
+
+/** Un pasajero publica su posición (el backend la entrega solo al conductor). */
+export const enviarUbicacionPasajero = (viajeId: string, lat: number, lng: number) =>
+  publicar('/app/viaje.ubicacion.pasajero', viajeId, lat, lng);

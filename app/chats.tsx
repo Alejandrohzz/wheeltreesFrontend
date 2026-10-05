@@ -2,15 +2,16 @@ import { useAppTheme } from '@/contexts/ThemeContext';
 import { ChatResumen, misChats } from '@/services/chat';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const DARK_C = {
   bg:        '#131517',
@@ -47,6 +48,7 @@ function formatearHora(iso?: string) {
 }
 
 export default function ChatsScreen() {
+  const { t } = useTranslation();
   const { isDark } = useAppTheme();
   const C = isDark ? DARK_C : LIGHT_C;
   const s = useMemo(() => createStyles(C), [C]);
@@ -68,7 +70,7 @@ export default function ChatsScreen() {
       });
       setChats(data);
     } catch (e: any) {
-      setError(e?.message ?? 'No se pudieron cargar tus chats');
+      setError(e?.message ?? t('chats.errorLoad'));
     } finally {
       setCargando(false);
     }
@@ -86,7 +88,7 @@ export default function ChatsScreen() {
         <TouchableOpacity onPress={() => router.back()} style={s.backBtn} activeOpacity={0.7}>
           <Text style={s.backIcon}>←</Text>
         </TouchableOpacity>
-        <Text style={s.headerTitle}>Mis chats</Text>
+        <Text style={s.headerTitle}>{t('chats.title')}</Text>
         <View style={{ width: 36 }} />
       </View>
       <View style={s.headerDivider} />
@@ -102,7 +104,7 @@ export default function ChatsScreen() {
           <View style={s.centerBox}>
             <Text style={s.errorText}>{error}</Text>
             <TouchableOpacity onPress={cargar} style={s.retryBtn}>
-              <Text style={s.retryText}>Reintentar</Text>
+              <Text style={s.retryText}>{t('chats.retry')}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -110,7 +112,7 @@ export default function ChatsScreen() {
         {!cargando && !error && chats.length === 0 && (
           <View style={s.centerBox}>
             <Text style={s.emptyText}>
-              Aún no tienes conversaciones.{'\n'}Aparecerán aquí en cuanto compartas un viaje confirmado con alguien.
+              {t('chats.empty')}
             </Text>
           </View>
         )}
@@ -137,7 +139,7 @@ export default function ChatsScreen() {
                 <Text style={s.hora}>{formatearHora(c.ultimoMensajeEn)}</Text>
               </View>
               <Text style={s.ultimo} numberOfLines={1}>
-                {c.ultimoMensaje ?? 'Todavía no hay mensajes'}
+                {c.ultimoMensaje ?? t('chats.noMessages')}
               </Text>
             </View>
 

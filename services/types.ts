@@ -18,7 +18,12 @@ export interface Vehiculo {
   activo:              boolean;
   terminosAceptados:   boolean;
   terminosAceptadosEn?: string | null;
+  /** Revisión manual del administrador. */
+  estadoVerificacion?: EstadoVerificacion;
+  motivoRechazo?:      string | null;
 }
+
+export type EstadoVerificacion = 'PENDIENTE' | 'APROBADO' | 'RECHAZADO';
 
 // Debe coincidir con el estado del viaje en el backend
 export type EstadoViaje = 'ACTIVO' | 'COMPLETADO' | 'CANCELADO' | string;

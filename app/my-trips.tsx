@@ -3,16 +3,17 @@ import { cancelarViaje, listarMisViajes } from '@/services/viajes';
 import { Viaje } from '@/services/types';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const DARK_C = {
   bg:        '#131517',
@@ -40,14 +41,15 @@ const LIGHT_C = {
   amber: '#E0B84C',
 };
 
-const BADGE: Record<string, { label: string; color: string; bg: string }> = {
-  PROGRAMADO: { label: 'Programado', color: DARK_C.accent, bg: 'rgba(74,144,217,0.15)' },
-  EN_CURSO:   { label: 'En curso',   color: DARK_C.amber,  bg: 'rgba(224,184,76,0.15)' },
-  COMPLETADO: { label: 'Completado', color: DARK_C.green,  bg: 'rgba(61,190,122,0.15)' },
-  CANCELADO:  { label: 'Cancelado',  color: DARK_C.red,    bg: 'rgba(224,92,92,0.15)' },
+const BADGE: Record<string, { color: string; bg: string }> = {
+  PROGRAMADO: { color: DARK_C.accent, bg: 'rgba(74,144,217,0.15)' },
+  EN_CURSO:   { color: DARK_C.amber,  bg: 'rgba(224,184,76,0.15)' },
+  COMPLETADO: { color: DARK_C.green,  bg: 'rgba(61,190,122,0.15)' },
+  CANCELADO:  { color: DARK_C.red,    bg: 'rgba(224,92,92,0.15)' },
 };
 
 export default function MyTripsScreen() {
+  const { t } = useTranslation();
   const { isDark } = useAppTheme();
   const C = isDark ? DARK_C : LIGHT_C;
   const s = useMemo(() => createStyles(C), [C]);
@@ -66,7 +68,7 @@ export default function MyTripsScreen() {
       data.sort((a, b) => new Date(a.fechaHoraSalida).getTime() - new Date(b.fechaHoraSalida).getTime());
       setViajes(data);
     } catch (e: any) {
-      setError(e?.message ?? 'No se pudieron cargar tus viajes');
+      setError(e?.message ?? t('myTrips.errorLoad'));
     } finally {
       setCargando(false);
     }
@@ -76,12 +78,12 @@ export default function MyTripsScreen() {
 
   const handleCancelar = (viaje: Viaje) => {
     Alert.alert(
-      'Cancelar viaje',
-      '¿Seguro que quieres cancelar este viaje? Se avisará a los pasajeros con reserva.',
+      t('myTrips.cancelAlertTitle'),
+      t('myTrips.cancelAlertMsg'),
       [
-        { text: 'No', style: 'cancel' },
+        { text: t('myTrips.no'), style: 'cancel' },
         {
-          text: 'Sí, cancelar',
+          text: t('myTrips.siCancelar'),
           style: 'destructive',
           onPress: async () => {
             setProcesandoId(viaje.id);
@@ -89,7 +91,7 @@ export default function MyTripsScreen() {
               await cancelarViaje(viaje.id);
               cargar();
             } catch (e: any) {
-              Alert.alert('No se pudo cancelar', e?.message ?? 'Inténtalo de nuevo');
+              Alert.alert(t('myTrips.noSePudoCancelarTitle'), e?.message ?? t('myTrips.intentaDeNuevo'));
             } finally {
               setProcesandoId(null);
             }
@@ -105,7 +107,7 @@ export default function MyTripsScreen() {
         <TouchableOpacity onPress={() => router.back()} style={s.backBtn} activeOpacity={0.7}>
           <Text style={s.backIcon}>←</Text>
         </TouchableOpacity>
-        <Text style={s.headerTitle}>Mis viajes</Text>
+        <Text style={s.headerTitle}>{t('myTrips.title')}</Text>
         <View style={{ width: 36 }} />
       </View>
       <View style={s.headerDivider} />
@@ -121,25 +123,31 @@ export default function MyTripsScreen() {
           <View style={s.centerBox}>
             <Text style={s.errorText}>{error}</Text>
             <TouchableOpacity onPress={cargar} style={s.retryBtn}>
-              <Text style={s.retryText}>Reintentar</Text>
+              <Text style={s.retryText}>{t('myTrips.retry')}</Text>
             </TouchableOpacity>
           </View>
         )}
 
         {!cargando && !error && viajes.length === 0 && (
           <View style={s.centerBox}>
-            <Text style={s.emptyText}>Todavía no has publicado ningún viaje.</Text>
+            <Text style={s.emptyText}>{t('myTrips.empty')}</Text>
           </View>
         )}
 
         {!cargando && !error && viajes.map((v) => {
           const badge = BADGE[v.estado] ?? BADGE.PROGRAMADO;
+          const estadoLabel = {
+            PROGRAMADO: t('myTrips.estadoProgramado'),
+            EN_CURSO: t('myTrips.estadoEnCurso'),
+            COMPLETADO: t('myTrips.estadoCompletado'),
+            CANCELADO: t('myTrips.estadoCancelado'),
+          }[v.estado] ?? v.estado;
           const procesando = procesandoId === v.id;
 
           return (
             <View key={v.id} style={s.card}>
               <View style={[s.badge, { backgroundColor: badge.bg }]}>
-                <Text style={[s.badgeText, { color: badge.color }]}>{badge.label}</Text>
+                <Text style={[s.badgeText, { color: badge.color }]}>{estadoLabel}</Text>
               </View>
 
               <Text style={s.ruta}>{v.origenDescripcion} → {v.destinoDescripcion}</Text>
@@ -150,7 +158,7 @@ export default function MyTripsScreen() {
                 })}
               </Text>
               <Text style={s.detail}>
-                {v.vehiculoDescripcion} · {v.cuposDisponibles}/{v.cuposTotales} cupos libres
+                {v.vehiculoDescripcion} · {v.cuposDisponibles}/{v.cuposTotales} {t('myTrips.cuposLibres')}
               </Text>
 
               {v.estado === 'PROGRAMADO' && (
@@ -161,7 +169,7 @@ export default function MyTripsScreen() {
                     disabled={procesando}
                     onPress={() => handleCancelar(v)}
                   >
-                    <Text style={s.cancelText}>Cancelar</Text>
+                    <Text style={s.cancelText}>{t('myTrips.cancel')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[s.actionBtn, s.startBtn, procesando && s.disabled]}
@@ -171,7 +179,7 @@ export default function MyTripsScreen() {
                   >
                     {procesando
                       ? <ActivityIndicator color="#0A0A0A" size="small" />
-                      : <Text style={s.startText}> Ver ruta e iniciar</Text>}
+                      : <Text style={s.startText}>{t('myTrips.verRutaIniciar')}</Text>}
                   </TouchableOpacity>
                 </View>
               )}
@@ -182,7 +190,7 @@ export default function MyTripsScreen() {
                   activeOpacity={0.7}
                   onPress={() => router.push({ pathname: '/trip-in-progress', params: { viajeId: v.id } })}
                 >
-                  <Text style={s.manageText}>Gestionar viaje en curso</Text>
+                  <Text style={s.manageText}>{t('myTrips.gestionarViaje')}</Text>
                 </TouchableOpacity>
               )}
             </View>
