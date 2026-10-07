@@ -3,11 +3,11 @@ import { useAuth } from '@/context/AuthContext';
 import { getRoute, LatLng } from '@/services/directions';
 import { solicitarReserva } from '@/services/reservas';
 import { Viaje } from '@/services/types';
-import { listarViajes } from '@/services/viajes';
+import { FiltrosViajes, listarViajes } from '@/services/viajes';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from "expo-router/react-navigation";
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
@@ -16,6 +16,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -55,6 +56,46 @@ const DARK_MAP_STYLE = [
   { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#2f2f2f' }] },
   { featureType: 'landscape', elementType: 'geometry', stylers: [{ color: '#1c1c1c' }] },
 ];
+
+type Franja = 'CUALQUIERA' | 'MANANA' | 'TARDE' | 'NOCHE';
+type Dia = 'CUALQUIERA' | 'HOY' | 'MANANA';
+
+interface FiltrosUI {
+  origen: string;
+  destino: string;
+  franja: Franja;
+  dia: Dia;
+}
+
+const FILTROS_VACIOS: FiltrosUI = { origen: '', destino: '', franja: 'CUALQUIERA', dia: 'CUALQUIERA' };
+
+// Franjas del día (la nocturna cruza la medianoche; el backend lo soporta).
+const HORAS_FRANJA: Record<Exclude<Franja, 'CUALQUIERA'>, { desde: string; hasta: string }> = {
+  MANANA: { desde: '05:00', hasta: '12:00' },
+  TARDE:  { desde: '12:00', hasta: '18:00' },
+  NOCHE:  { desde: '18:00', hasta: '05:00' },
+};
+
+const dosDigitos = (n: number) => String(n).padStart(2, '0');
+const aFechaISO = (d: Date) => `${d.getFullYear()}-${dosDigitos(d.getMonth() + 1)}-${dosDigitos(d.getDate())}`;
+
+/** Convierte los filtros de la pantalla en los parámetros que entiende el backend. */
+function aFiltrosApi(f: FiltrosUI): FiltrosViajes {
+  const api: FiltrosViajes = { origen: f.origen, destino: f.destino };
+  if (f.franja !== 'CUALQUIERA') {
+    api.horaDesde = HORAS_FRANJA[f.franja].desde;
+    api.horaHasta = HORAS_FRANJA[f.franja].hasta;
+  }
+  if (f.dia !== 'CUALQUIERA') {
+    const d = new Date();
+    if (f.dia === 'MANANA') d.setDate(d.getDate() + 1);
+    api.fecha = aFechaISO(d);
+  }
+  return api;
+}
+
+const contarFiltros = (f: FiltrosUI) =>
+  (f.origen.trim() ? 1 : 0) + (f.destino.trim() ? 1 : 0) + (f.franja !== 'CUALQUIERA' ? 1 : 0) + (f.dia !== 'CUALQUIERA' ? 1 : 0);
 
 type ViajeConRuta = Viaje & {
   routeCoords?: LatLng[];
@@ -205,11 +246,21 @@ export default function AvailableTripsScreen() {
   const [reservandoId, setReservandoId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
-  const cargar = useCallback(async () => {
-    setCargando(true);
+  // ── Filtros de búsqueda (UR-006): zona, destino, día y franja horaria ──
+  const [filtros, setFiltros] = useState<FiltrosUI>(FILTROS_VACIOS);
+  const [mostrarFiltros, setMostrarFiltros] = useState(false);
+  const [buscando, setBuscando] = useState(false);
+  const filtrosRef = useRef<FiltrosUI>(FILTROS_VACIOS);
+  const cantidadFiltros = contarFiltros(filtros);
+
+  // `completa` = pantalla de carga completa (primer ingreso / al volver a la pantalla).
+  // Al cambiar un filtro solo se muestra un indicador pequeño para no desmontar los campos de texto.
+  const cargar = useCallback(async (completa: boolean = true) => {
+    if (completa) setCargando(true);
+    else setBuscando(true);
     setError('');
     try {
-      const data = await listarViajes();
+      const data = await listarViajes(aFiltrosApi(filtrosRef.current));
       const disponibles = data
         .filter(
           (v) =>
@@ -252,12 +303,30 @@ export default function AvailableTripsScreen() {
       setError(e?.message ?? t('availableTrips.errorLoad'));
     } finally {
       setCargando(false);
+      setBuscando(false);
     }
   }, [usuario?.id]);
 
+  // Al cambiar un filtro se vuelve a buscar (con una pequeña espera mientras el usuario escribe).
+  const primerRender = useRef(true);
+  useEffect(() => {
+    if (primerRender.current) {
+      primerRender.current = false;
+      return;
+    }
+    const id = setTimeout(() => {
+      filtrosRef.current = filtros;
+      cargar(false);
+    }, 450);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtros]);
+
+  const limpiarFiltros = () => setFiltros(FILTROS_VACIOS);
+
   useFocusEffect(
     useCallback(() => {
-      cargar();
+      cargar(true);
     }, [cargar])
   );
 
@@ -282,8 +351,97 @@ export default function AvailableTripsScreen() {
           <Text style={s.backText}>‹</Text>
         </TouchableOpacity>
         <Text style={s.title}>{t('availableTrips.title')}</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity
+          onPress={() => setMostrarFiltros((v) => !v)}
+          style={s.filterToggle}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={t('availableTrips.filtros')}
+        >
+          <Ionicons
+            name={mostrarFiltros ? 'options' : 'options-outline'}
+            size={24}
+            color={cantidadFiltros > 0 ? C.green : C.text}
+          />
+          {cantidadFiltros > 0 && (
+            <View style={s.filterBadge}>
+              <Text style={s.filterBadgeText}>{cantidadFiltros}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
+
+      {mostrarFiltros && (
+        <View style={s.filterPanel}>
+          <View style={s.filterRow}>
+            <View style={s.filterInputWrap}>
+              <Ionicons name="location-outline" size={16} color={C.muted} />
+              <TextInput
+                style={s.filterInput}
+                value={filtros.origen}
+                onChangeText={(v) => setFiltros((f) => ({ ...f, origen: v }))}
+                placeholder={t('availableTrips.filtroOrigen')}
+                placeholderTextColor={C.muted}
+                autoCorrect={false}
+                returnKeyType="search"
+              />
+            </View>
+            <View style={s.filterInputWrap}>
+              <Ionicons name="flag-outline" size={16} color={C.muted} />
+              <TextInput
+                style={s.filterInput}
+                value={filtros.destino}
+                onChangeText={(v) => setFiltros((f) => ({ ...f, destino: v }))}
+                placeholder={t('availableTrips.filtroDestino')}
+                placeholderTextColor={C.muted}
+                autoCorrect={false}
+                returnKeyType="search"
+              />
+            </View>
+          </View>
+
+          <Text style={s.filterLabel}>{t('availableTrips.filtroDia')}</Text>
+          <View style={s.chipRow}>
+            {(['CUALQUIERA', 'HOY', 'MANANA'] as Dia[]).map((d) => (
+              <TouchableOpacity
+                key={d}
+                style={[s.chip, filtros.dia === d && s.chipActive]}
+                onPress={() => setFiltros((f) => ({ ...f, dia: d }))}
+                activeOpacity={0.8}
+              >
+                <Text style={[s.chipText, filtros.dia === d && s.chipTextActive]}>
+                  {t(`availableTrips.dia_${d}`)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={s.filterLabel}>{t('availableTrips.filtroHora')}</Text>
+          <View style={s.chipRow}>
+            {(['CUALQUIERA', 'MANANA', 'TARDE', 'NOCHE'] as Franja[]).map((fr) => (
+              <TouchableOpacity
+                key={fr}
+                style={[s.chip, filtros.franja === fr && s.chipActive]}
+                onPress={() => setFiltros((f) => ({ ...f, franja: fr }))}
+                activeOpacity={0.8}
+              >
+                <Text style={[s.chipText, filtros.franja === fr && s.chipTextActive]}>
+                  {t(`availableTrips.franja_${fr}`)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <View style={s.filterFooter}>
+            {buscando ? <ActivityIndicator size="small" color={C.green} /> : <View />}
+            {cantidadFiltros > 0 && (
+              <TouchableOpacity onPress={limpiarFiltros} activeOpacity={0.7}>
+                <Text style={s.filterClear}>{t('availableTrips.limpiarFiltros')}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
 
       {cargando ? (
         <View style={s.center}>
@@ -293,7 +451,7 @@ export default function AvailableTripsScreen() {
       ) : error ? (
         <View style={s.center}>
           <Text style={s.error}>{error}</Text>
-          <TouchableOpacity onPress={cargar} style={s.retry}>
+          <TouchableOpacity onPress={() => cargar(true)} style={s.retry}>
             <Text style={s.retryText}>{t('availableTrips.retry')}</Text>
           </TouchableOpacity>
         </View>
@@ -319,8 +477,13 @@ export default function AvailableTripsScreen() {
               <View style={s.empty}>
                 <Text style={s.emptyTitle}>{t('availableTrips.emptyTitle')}</Text>
                 <Text style={s.emptyText}>
-                  {t('availableTrips.emptyText')}
+                  {cantidadFiltros > 0 ? t('availableTrips.emptyFiltrosText') : t('availableTrips.emptyText')}
                 </Text>
+                {cantidadFiltros > 0 && (
+                  <TouchableOpacity style={s.retry} onPress={limpiarFiltros} activeOpacity={0.8}>
+                    <Text style={s.retryText}>{t('availableTrips.limpiarFiltros')}</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             ) : (
               <>
@@ -407,6 +570,34 @@ function createStyles(C: any) {
   back: { width: 40, height: 40, justifyContent: 'center' },
   backText: { color: C.text, fontSize: 38, lineHeight: 40, fontWeight: '300' },
   title: { color: C.text, fontSize: 20, fontWeight: '800' },
+  filterToggle: { width: 40, height: 40, alignItems: 'flex-end', justifyContent: 'center' },
+  filterBadge: {
+    position: 'absolute', top: 2, right: -4, minWidth: 16, height: 16, borderRadius: 8,
+    backgroundColor: C.green, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3,
+  },
+  filterBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '800' },
+  filterPanel: {
+    paddingHorizontal: 16, paddingVertical: 12, gap: 8,
+    borderBottomWidth: 1, borderBottomColor: C.border, backgroundColor: C.bg,
+  },
+  filterRow: { flexDirection: 'row', gap: 8 },
+  filterInputWrap: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 10,
+    paddingHorizontal: 10, minHeight: 42,
+  },
+  filterInput: { flex: 1, color: C.text, fontSize: 14, paddingVertical: 8 },
+  filterLabel: { color: C.muted, fontSize: 12, fontWeight: '700', marginTop: 4 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
+    borderWidth: 1, borderColor: C.border, backgroundColor: C.card,
+    borderRadius: 18, paddingHorizontal: 14, paddingVertical: 7,
+  },
+  chipActive: { borderColor: C.green, backgroundColor: 'rgba(61,190,122,0.15)' },
+  chipText: { color: C.muted, fontSize: 13, fontWeight: '600' },
+  chipTextActive: { color: C.green },
+  filterFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 22 },
+  filterClear: { color: C.blue, fontSize: 13, fontWeight: '700' },
   mapContainer: { height: 330, overflow: 'hidden' },
   // Fondo del tema (antes oscuro fijo: en modo claro el texto no se leía).
   mapBadge: {

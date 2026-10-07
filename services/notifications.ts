@@ -81,7 +81,9 @@ export async function registrarNotificacionesPush(): Promise<string | null> {
     await registrarPushToken(token);
     return token;
   } catch (e) {
-    if (__DEV__) console.log('🔔 No se pudo registrar el push token:', e);
+    // Se loguea siempre (también en APK de producción): si falta la config de
+    // FCM/APNs el error real queda visible en `adb logcat` / Xcode.
+    console.warn('🔔 No se pudo registrar el push token:', e);
     return null;
   }
 }

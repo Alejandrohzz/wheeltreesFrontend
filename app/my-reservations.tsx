@@ -42,8 +42,7 @@ const LIGHT_C = {
 };
 
 // Regla de negocio (UR010): cancelación permitida hasta 30 min antes de la
-// salida. El backend actual NO valida esto todavía (solo revisa el estado),
-// así que se aplica aquí como aviso/bloqueo preventivo del lado del cliente.
+// salida. El backend también la valida; aquí se aplica como bloqueo preventivo.
 const MINUTOS_LIMITE_CANCELACION = 30;
 
 const ESTILOS_ESTADO: Record<string, { color: string }> = {

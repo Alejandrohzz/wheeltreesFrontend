@@ -3,8 +3,6 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Ionicons } from '@expo/vector-icons';
 import type { ComponentProps } from 'react';
 import PlaceAutocompleteInput from '@/components/PlaceAutocompleteInput';
-
-type IconName = ComponentProps<typeof Ionicons>['name'];
 import { useAuth } from '@/context/AuthContext';
 import { getPlaceLatLng, PlacePrediction } from '@/services/places';
 import { actualizarPerfil, actualizarRol, obtenerMiPerfil } from '@/services/usuarios';
@@ -22,6 +20,8 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+type IconName = ComponentProps<typeof Ionicons>['name'];
 
 const DARK_C = {
   bg:          '#131517',

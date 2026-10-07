@@ -49,7 +49,8 @@ export function useUbicacionViaje({ viajeId, rol, estadoInicial, compartir = tru
   const [permisoDenegado, setPermisoDenegado] = useState(false);
   const [miPosicion, setMiPosicion] = useState<Posicion | null>(null);
 
-  const ultimaRecepcion = useRef(Date.now());
+  const [t0] = useState(() => Date.now());
+  const ultimaRecepcion = useRef(t0);
   const estadoActual = estadoWs ?? estadoInicial ?? 'PROGRAMADO';
 
   const aplicarEvento = (e: UbicacionEvento) => {
@@ -84,7 +85,7 @@ export function useUbicacionViaje({ viajeId, rol, estadoInicial, compartir = tru
     if (!viajeId || Platform.OS === 'web') return;
 
     let activo = true;
-    let quitar: Array<() => void> = [];
+    let quitar: (() => void)[] = [];
     const limpiarSubs = () => { quitar.forEach((q) => q()); quitar = []; };
     let liberar: (() => void) | null = null;
 

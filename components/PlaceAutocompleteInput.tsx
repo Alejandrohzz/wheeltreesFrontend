@@ -53,7 +53,8 @@ export default function PlaceAutocompleteInput({
   const [loading, setLoading]         = useState(false);
   const [focused, setFocused]         = useState(false);
   const [error, setError]             = useState('');
-  const sessionToken = useRef(String(Date.now()));
+  const [sessionToken0] = useState(() => String(Date.now()));
+  const sessionToken = useRef(sessionToken0);
   const debounceRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {

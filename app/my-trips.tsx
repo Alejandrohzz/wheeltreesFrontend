@@ -77,6 +77,14 @@ export default function MyTripsScreen() {
   useFocusEffect(useCallback(() => { cargar(); }, [cargar]));
 
   const handleCancelar = (viaje: Viaje) => {
+    // Regla: con menos de 30 min para la salida ya no se puede cancelar
+    // (el back también lo valida; esto evita el viaje de ida y vuelta).
+    // Si la hora ya pasó (viaje vencido sin iniciar) sí se permite cancelar.
+    const minutosParaSalida = (new Date(viaje.fechaHoraSalida).getTime() - Date.now()) / 60000;
+    if (minutosParaSalida >= 0 && minutosParaSalida < 30) {
+      Alert.alert(t('myTrips.noSePudoCancelarTitle'), t('myTrips.cancelarMuyTarde'));
+      return;
+    }
     Alert.alert(
       t('myTrips.cancelAlertTitle'),
       t('myTrips.cancelAlertMsg'),

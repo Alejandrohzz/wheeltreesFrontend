@@ -2,7 +2,13 @@ import { useAppTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/context/AuthContext';
 import { esUsuarioAdmin, loginAdmin } from '@/services/admin';
 import { construirEmailDesdeUsuario, DOMINIO_CORREO, extraerUsuarioDeEmail } from '@/services/auth';
-import { guardarUltimoUsuario, obtenerUltimoUsuario } from '@/services/biometrics';
+import BiometricUnlockModal from '@/components/BiometricUnlockModal';
+import {
+  EstadoBloqueoBiometrico,
+  guardarUltimoUsuario,
+  obtenerEstadoBloqueoBiometrico,
+  obtenerUltimoUsuario,
+} from '@/services/biometrics';
 import { useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -78,6 +84,10 @@ export default function LoginScreen() {
   const [verificandoBiometria, setVerificandoBiometria] = useState(false);
   const [error,        setError]        = useState('');
 
+  // UR-002: bloqueo de la biometría tras 3 intentos fallidos
+  const [bloqueo,         setBloqueo]         = useState<EstadoBloqueoBiometrico | null>(null);
+  const [mostrarDesbloqueo, setMostrarDesbloqueo] = useState(false);
+
   const mostrarBotonBiometrico = biometricDisponible && biometricActivada && haySesionGuardada;
   const intentoAutomaticoHecho = useRef(false);
 
@@ -87,6 +97,13 @@ export default function LoginScreen() {
       if (u) setUsuario(u);
     });
   }, []);
+
+  // Lee cuántos intentos biométricos fallidos lleva el dispositivo.
+  useEffect(() => {
+    obtenerEstadoBloqueoBiometrico().then(setBloqueo).catch(() => {});
+  }, []);
+
+  const biometriaBloqueada = !!bloqueo?.bloqueada;
 
   // Si ya hay una sesión activa (se retomó sola porque la biometría no
   // estaba protegiéndola) o se abre luego de desbloquear, entra directo.
@@ -102,6 +119,8 @@ export default function LoginScreen() {
   useEffect(() => {
     if (
       !cargandoSesion &&
+      bloqueo !== null &&
+      !biometriaBloqueada &&
       mostrarBotonBiometrico &&
       !sesionActiva &&
       !intentoAutomaticoHecho.current
@@ -110,21 +129,53 @@ export default function LoginScreen() {
       handleBiometria();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cargandoSesion, mostrarBotonBiometrico, sesionActiva]);
+  }, [cargandoSesion, mostrarBotonBiometrico, sesionActiva, bloqueo]);
 
   const handleBiometria = async () => {
     setError('');
+
+    // Ya agotó los 3 intentos: solo se desbloquea con el código del correo.
+    const estadoPrevio = await obtenerEstadoBloqueoBiometrico();
+    setBloqueo(estadoPrevio);
+    if (estadoPrevio.bloqueada) {
+      abrirDesbloqueo();
+      return;
+    }
+
     setVerificandoBiometria(true);
     try {
       const ok = await iniciarSesionConBiometria();
       if (ok) {
         router.replace('/home');
       } else {
-        setError(t('login.errorBiometric'));
+        const estado = await obtenerEstadoBloqueoBiometrico();
+        setBloqueo(estado);
+        setError(
+          estado.bloqueada
+            ? t('login.biometricLocked')
+            : estado.intentosFallidos > 0
+            ? t('login.biometricAttemptsLeft', { n: estado.intentosRestantes })
+            : t('login.errorBiometric'),
+        );
       }
     } finally {
       setVerificandoBiometria(false);
     }
+  };
+
+  const abrirDesbloqueo = () => {
+    if (!usuario.trim()) {
+      setError(t('login.errorUsernameRequired'));
+      return;
+    }
+    setMostrarDesbloqueo(true);
+  };
+
+  const handleDesbloqueado = async () => {
+    setMostrarDesbloqueo(false);
+    setError('');
+    setBloqueo(await obtenerEstadoBloqueoBiometrico());
+    Alert.alert(t('login.biometricUnlockedTitle'), t('login.biometricUnlockedMsg'));
   };
 
   const handleLogin = async () => {
@@ -263,7 +314,7 @@ export default function LoginScreen() {
         </TouchableOpacity>
 
         {/* Biometría se solicita automáticamente al abrir la app. Este botón queda como reintento. */}
-        {mostrarBotonBiometrico && (
+        {mostrarBotonBiometrico && !biometriaBloqueada && (
           <TouchableOpacity
             style={[s.bioBtn, verificandoBiometria && s.signInBtnDisabled]}
             activeOpacity={0.85}
@@ -281,6 +332,17 @@ export default function LoginScreen() {
           </TouchableOpacity>
         )}
 
+        {/* UR-002: tras 3 intentos fallidos la biometría se bloquea hasta ingresar el código del correo. */}
+        {mostrarBotonBiometrico && biometriaBloqueada && (
+          <View style={s.lockBox}>
+            <Text style={s.lockTitle}>{t('login.biometricLockedTitle')}</Text>
+            <Text style={s.lockText}>{t('login.biometricLockedText')}</Text>
+            <TouchableOpacity style={s.lockBtn} activeOpacity={0.85} onPress={abrirDesbloqueo}>
+              <Text style={s.lockBtnText}>{t('login.biometricUnlockButton')}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         <TouchableOpacity style={s.forgotBtn} onPress={() => router.push('/forgot-password')}>
           <Text style={s.forgotText}>{t('login.forgotPassword')}</Text>
         </TouchableOpacity>
@@ -293,6 +355,14 @@ export default function LoginScreen() {
         </View>
 
       </View>
+
+      <BiometricUnlockModal
+        visible={mostrarDesbloqueo}
+        usuario={usuario}
+        C={C}
+        onClose={() => setMostrarDesbloqueo(false)}
+        onUnlocked={handleDesbloqueado}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -342,6 +412,19 @@ function createStyles(C: any) {
   },
   bioIcon:          { fontSize: 16, marginRight: 8 },
   bioBtnText:       { color: C.accentGreen, fontSize: 15, fontWeight: '700', letterSpacing: 0.2 },
+  lockBox: {
+    marginTop: 14,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.error,
+    backgroundColor: C.surface,
+    alignItems: 'center',
+  },
+  lockTitle:        { color: C.error, fontSize: 14, fontWeight: '700', marginBottom: 4 },
+  lockText:         { color: C.textSecondary, fontSize: 13, textAlign: 'center', lineHeight: 18 },
+  lockBtn:          { marginTop: 12, paddingVertical: 11, paddingHorizontal: 22, borderRadius: 30, borderWidth: 1, borderColor: C.accentGreen },
+  lockBtnText:      { color: C.accentGreen, fontSize: 14, fontWeight: '700' },
   forgotBtn:        { alignItems: 'center', marginTop: 14 },
   forgotText:       { fontSize: 13, color: C.accent },
   footer:           { flexDirection: 'row', justifyContent: 'center', marginTop: 32 },

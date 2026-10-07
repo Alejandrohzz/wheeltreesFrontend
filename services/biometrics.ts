@@ -3,6 +3,48 @@ import * as SecureStore from 'expo-secure-store';
 
 const BIOMETRIC_FLAG_KEY = 'wt_biometric_enabled';
 const ULTIMO_USUARIO_KEY = 'wt_ultimo_usuario';
+const INTENTOS_FALLIDOS_KEY = 'wt_biometric_fallos';
+
+/** UR-002: tras este número de intentos fallidos seguidos se bloquea la biometría. */
+export const MAX_INTENTOS_BIOMETRICOS = 3;
+
+export interface EstadoBloqueoBiometrico {
+  /** true cuando ya se agotaron los intentos: hay que desbloquear con el código del correo. */
+  bloqueada: boolean;
+  intentosFallidos: number;
+  intentosRestantes: number;
+}
+
+async function leerIntentosFallidos(): Promise<number> {
+  const v = await SecureStore.getItemAsync(INTENTOS_FALLIDOS_KEY);
+  const n = v ? parseInt(v, 10) : 0;
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** Cuántos intentos van y cuántos quedan antes del bloqueo. */
+export async function obtenerEstadoBloqueoBiometrico(): Promise<EstadoBloqueoBiometrico> {
+  const fallidos = await leerIntentosFallidos();
+  return {
+    bloqueada: fallidos >= MAX_INTENTOS_BIOMETRICOS,
+    intentosFallidos: fallidos,
+    intentosRestantes: Math.max(0, MAX_INTENTOS_BIOMETRICOS - fallidos),
+  };
+}
+
+/** Suma un intento fallido y devuelve el estado resultante. */
+export async function registrarIntentoBiometricoFallido(): Promise<EstadoBloqueoBiometrico> {
+  const fallidos = (await leerIntentosFallidos()) + 1;
+  await SecureStore.setItemAsync(INTENTOS_FALLIDOS_KEY, String(fallidos));
+  return obtenerEstadoBloqueoBiometrico();
+}
+
+/** Pone el contador en cero (tras un éxito o tras desbloquear con el código del correo). */
+export async function reiniciarIntentosBiometricos(): Promise<void> {
+  await SecureStore.deleteItemAsync(INTENTOS_FALLIDOS_KEY);
+}
+
+// Cancelar el prompt no es un intento fallido: el usuario simplemente cerró el diálogo.
+const ERRORES_DE_CANCELACION = ['user_cancel', 'system_cancel', 'app_cancel'];
 
 /**
  * true solo si el dispositivo tiene sensor biométrico Y el usuario ya
@@ -30,6 +72,10 @@ export async function autenticarConBiometria(
   const disponible = await biometriaDisponible();
   if (!disponible) return false;
 
+  // UR-002: con 3 intentos fallidos la biometría queda bloqueada hasta que el
+  // usuario la desbloquee con el código que se envía a su correo institucional.
+  if ((await obtenerEstadoBloqueoBiometrico()).bloqueada) return false;
+
   // PRIMER INTENTO: biometría pura. No dejamos que iOS sustituya
   // inmediatamente Face ID por el código del dispositivo.
   const biometria = await LocalAuthentication.authenticateAsync({
@@ -38,7 +84,10 @@ export async function autenticarConBiometria(
     disableDeviceFallback: true,
   });
 
-  if (biometria.success) return true;
+  if (biometria.success) {
+    await reiniciarIntentosBiometricos();
+    return true;
+  }
 
   // SEGUNDO INTENTO: solo después de que la biometría no haya sido válida,
   // permitimos el código/PIN del dispositivo como respaldo.
@@ -49,7 +98,16 @@ export async function autenticarConBiometria(
     disableDeviceFallback: false,
   });
 
-  return respaldo.success;
+  if (respaldo.success) {
+    await reiniciarIntentosBiometricos();
+    return true;
+  }
+
+  // Fallo real (no una cancelación): cuenta como un intento fallido.
+  const cancelo = !respaldo.success && ERRORES_DE_CANCELACION.includes((respaldo as any).error);
+  if (!cancelo) await registrarIntentoBiometricoFallido();
+
+  return false;
 }
 
 /** Preferencia del usuario: ¿quiere usar biometría para iniciar sesión en esta app? */

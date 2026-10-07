@@ -25,9 +25,30 @@ export const crearViaje = (body: ViajeRequest) =>
     body: JSON.stringify(body),
   });
 
-/** GET /api/viajes — lista los viajes disponibles */
-export const listarViajes = () =>
-  apiFetch<Viaje[]>('/api/viajes');
+/** Filtros opcionales de búsqueda de viajes (UR-006). Todos se combinan con AND. */
+export interface FiltrosViajes {
+  /** Zona / barrio de salida (texto). */
+  origen?:    string;
+  /** Destino (texto, sin importar tildes ni mayúsculas). */
+  destino?:   string;
+  /** Día de salida, formato YYYY-MM-DD. */
+  fecha?:     string;
+  /** Hora mínima de salida, HH:mm. */
+  horaDesde?: string;
+  /** Hora máxima de salida, HH:mm. Si es menor que horaDesde cruza la medianoche. */
+  horaHasta?: string;
+}
+
+/** GET /api/viajes — lista los viajes disponibles, con filtros opcionales por zona, destino, fecha y hora */
+export const listarViajes = (filtros: FiltrosViajes = {}) => {
+  const params = new URLSearchParams();
+  (Object.keys(filtros) as (keyof FiltrosViajes)[]).forEach((k) => {
+    const v = filtros[k]?.trim();
+    if (v) params.append(k, v);
+  });
+  const qs = params.toString();
+  return apiFetch<Viaje[]>(`/api/viajes${qs ? `?${qs}` : ''}`);
+};
 
 /** GET /api/viajes/{id} — detalle de un viaje puntual */
 export const detalleViaje = (id: string) =>

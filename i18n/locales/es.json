@@ -22,7 +22,14 @@
     "biometricAlertMessage": "¿Quieres usar tu huella o Face ID para iniciar sesión la próxima vez?",
     "biometricAlertNotNow": "Ahora no",
     "biometricAlertEnable": "Activar",
-    "forgotPassword": "¿Olvidaste tu contraseña?"
+    "forgotPassword": "¿Olvidaste tu contraseña?",
+    "biometricLocked": "Biometría bloqueada por 3 intentos fallidos. Desbloquéala con el código que te enviamos al correo o inicia sesión con tu contraseña.",
+    "biometricAttemptsLeft": "No se pudo verificar tu identidad. Te quedan {{n}} intento(s) antes del bloqueo.",
+    "biometricLockedTitle": "Biometría bloqueada",
+    "biometricLockedText": "Superaste los 3 intentos fallidos. Desbloquéala con un código que enviaremos a tu correo institucional.",
+    "biometricUnlockButton": "Desbloquear con código del correo",
+    "biometricUnlockedTitle": "Biometría desbloqueada",
+    "biometricUnlockedMsg": "Ya puedes volver a usar tu huella o rostro para iniciar sesión."
   },
   "register": {
     "stepFormTitle": "Crear cuenta",
@@ -197,7 +204,8 @@
     "estadoProgramado": "Programado",
     "estadoEnCurso": "En curso",
     "estadoCompletado": "Completado",
-    "estadoCancelado": "Cancelado"
+    "estadoCancelado": "Cancelado",
+    "cancelarMuyTarde": "Faltan menos de 30 minutos para la salida, por lo que ya no puedes cancelar este viaje."
   },
   "myReservations": {
     "title": "Mis reservas",
@@ -343,7 +351,21 @@
     "reservaEnviadaTitle": "Reserva enviada",
     "reservaEnviadaMsg": "Tu solicitud de reserva fue enviada correctamente.",
     "noSePudoReservarTitle": "No se pudo reservar",
-    "intentaDeNuevo": "Inténtalo de nuevo."
+    "intentaDeNuevo": "Inténtalo de nuevo.",
+    "filtros": "Filtros",
+    "filtroOrigen": "Zona o barrio de salida",
+    "filtroDestino": "Destino",
+    "filtroDia": "Día",
+    "filtroHora": "Hora de salida",
+    "dia_CUALQUIERA": "Cualquiera",
+    "dia_HOY": "Hoy",
+    "dia_MANANA": "Mañana",
+    "franja_CUALQUIERA": "Cualquiera",
+    "franja_MANANA": "Mañana (5–12)",
+    "franja_TARDE": "Tarde (12–18)",
+    "franja_NOCHE": "Noche (18–5)",
+    "limpiarFiltros": "Limpiar filtros",
+    "emptyFiltrosText": "Ningún viaje coincide con tus filtros. Prueba con otra zona, destino u hora."
   },
   "tripInProgress": {
     "title": "Viaje en curso",
@@ -515,5 +537,17 @@
   "terms": {
     "title": "Términos y condiciones",
     "close": "Cerrar"
+  },
+  "biometricUnlock": {
+    "title": "Desbloquear biometría",
+    "enviando": "Enviando código a tu correo…",
+    "enviado": "Enviamos un código de 6 dígitos a {{email}}. Escríbelo para desbloquear la biometría.",
+    "sinEnviar": "No pudimos enviar el código. Intenta de nuevo.",
+    "desbloquear": "Desbloquear",
+    "reenviar": "Reenviar código",
+    "reenviarEn": "Reenviar código en {{s}} s",
+    "cancelar": "Cancelar",
+    "errorEnviar": "No se pudo enviar el código",
+    "errorCodigo": "Código inválido o expirado"
   }
 }

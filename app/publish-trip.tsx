@@ -177,7 +177,7 @@ export default function PublishTripScreen() {
     obtenerMiPerfil().then(setPerfil).catch(() => {});
   }, []);
 
-  const [fecha, setFecha]                 = useState(new Date(Date.now() + 60 * 60 * 1000));
+  const [fecha, setFecha] = useState(() => new Date(Date.now() + 60 * 60 * 1000));
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
 

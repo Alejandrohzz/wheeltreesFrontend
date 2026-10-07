@@ -54,7 +54,7 @@ export function SlideToConfirm({
   const thumbSize = height - 8; // 4px de padding a cada lado
   const maxTranslate = Math.max(trackWidth - thumbSize - 8, 0);
 
-  const translateX = useRef(new Animated.Value(0)).current;
+  const [translateX] = useState(() => new Animated.Value(0));
   const confirmedRef = useRef(false);
 
   const isLocked = disabled || loading;

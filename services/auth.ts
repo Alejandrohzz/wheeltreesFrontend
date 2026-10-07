@@ -117,3 +117,18 @@ export const restablecerPassword = (email: string, codigoOtp: string, nuevaPassw
     method: 'POST',
     body:   JSON.stringify({ email, codigoOtp, nuevaPassword }),
   });
+// ── Desbloqueo de la biometría (UR-002) ─────────────────────────────────
+
+/** POST /api/auth/desbloqueo-biometrico/solicitar — manda al correo el código para desbloquear la biometría. */
+export const solicitarDesbloqueoBiometrico = (email: string) =>
+  apiFetch<MensajeResponse>('/api/auth/desbloqueo-biometrico/solicitar', {
+    method: 'POST',
+    body:   JSON.stringify({ email }),
+  });
+
+/** POST /api/auth/desbloqueo-biometrico/verificar — valida el código (se consume al usarse). */
+export const verificarDesbloqueoBiometrico = (email: string, codigoOtp: string) =>
+  apiFetch<MensajeResponse>('/api/auth/desbloqueo-biometrico/verificar', {
+    method: 'POST',
+    body:   JSON.stringify({ email, codigoOtp }),
+  });
