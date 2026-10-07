@@ -1,0 +1,25 @@
+﻿node.exe : PASS __tests__/services/auth.test.ts
+En línea: 1 Carácter: 1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (PASS __tests__/services/auth.test.ts:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+PASS __tests__/services/viajes.test.ts
+PASS __tests__/context/AuthContext.test.tsx
+------------------|---------|----------|---------|---------|-------------------
+File              | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
+------------------|---------|----------|---------|---------|-------------------
+All files         |   99.15 |     93.1 |     100 |     100 |                   
+ context          |   98.66 |     90.9 |     100 |     100 |                   
+  AuthContext.tsx |   98.66 |     90.9 |     100 |     100 | 150-163           
+ services         |     100 |      100 |     100 |     100 |                   
+  auth.ts         |     100 |      100 |     100 |     100 |                   
+  viajes.ts       |     100 |      100 |     100 |     100 |                   
+------------------|---------|----------|---------|---------|-------------------
+
+Test Suites: 3 passed, 3 total
+Tests:       40 passed, 40 total
+Snapshots:   0 total
+Time:        5.205 s, estimated 18 s
+Ran all test suites.
