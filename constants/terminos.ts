@@ -11,9 +11,6 @@ export const TERMINOS_VERSION = '1.1';
 export const TERMINOS_FECHA = '2 de octubre de 2026';
 export const TERMINOS_FECHA_EN = 'October 2, 2026';
 
-/** ⚠️ Reemplaza por el correo real de soporte/contacto del proyecto. */
-export const CORREO_CONTACTO = 'wheeltrees.soporte@unbosque.edu.co';
-
 export interface SeccionTerminos {
   titulo: string;
   parrafos: string[];
@@ -109,9 +106,9 @@ const ES: Terminos = {
         'Finalidades: crear y administrar tu cuenta, conectar conductores y pasajeros, verificar vehículos y documentos, mostrar rutas y ubicación en vivo, mantener la seguridad de la comunidad, atender reportes y mejorar la aplicación. No vendemos tus datos.',
         'Datos biométricos: si activas el ingreso con huella o reconocimiento facial, la verificación la realiza el sistema operativo de tu dispositivo. WheelTrees no recibe ni almacena tu huella ni tu rostro; solo guarda en tu dispositivo, de forma protegida, la preferencia de usar ese método. Los datos biométricos son datos sensibles y su uso es siempre opcional.',
         'Documentos del conductor y del vehículo: las fotografías de la licencia de conducción y de la tarjeta de propiedad se recolectan únicamente para verificar que puedes conducir y que el vehículo puede ser registrado en la plataforma. Estos documentos pueden contener datos sensibles, como el grupo sanguíneo (RH) que aparece en la licencia. Por ser datos sensibles, no estás obligado a entregarlos; sin embargo, sin ellos no es posible aprobar tu registro como conductor. Los tratamos solo con tu autorización previa, expresa e informada, que otorgas en una casilla separada del formulario de registro de vehículos.',
-        'Quién ve esos documentos: solo los administradores de WheelTrees, para revisar y aprobar o rechazar el vehículo. No se muestran a otros usuarios. Se conservan mientras el vehículo esté registrado y se eliminan cuando lo pidas, salvo que exista un deber legal de conservarlos. Si la tarjeta de propiedad pertenece a otra persona, declaras que cuentas con su autorización para compartir sus datos con WheelTrees. Puedes revocar tu autorización y solicitar la eliminación de los documentos escribiendo a ' + CORREO_CONTACTO + '. En ese caso el vehículo dejará de estar habilitado para publicar viajes.',
+        'Quién ve esos documentos: solo los administradores de WheelTrees, para revisar y aprobar o rechazar el vehículo. No se muestran a otros usuarios. Se conservan mientras el vehículo esté registrado y se eliminan cuando lo pidas, salvo que exista un deber legal de conservarlos. Si la tarjeta de propiedad pertenece a otra persona, declaras que cuentas con su autorización para compartir sus datos con WheelTrees. Puedes revocar tu autorización y solicitar la eliminación de los documentos a través de la sección de Ayuda de la aplicación. En ese caso el vehículo dejará de estar habilitado para publicar viajes.',
         'Servicios de terceros: para mapas, búsqueda de lugares y rutas usamos Google Maps Platform, y para alojar la información usamos infraestructura en la nube. Esa infraestructura puede estar ubicada fuera de Colombia, por lo que tus datos pueden ser transferidos y almacenados en otros países, aplicando medidas de seguridad adecuadas. Estos proveedores tratan los datos según sus propias políticas.',
-        'Tus derechos como titular: conocer, actualizar y rectificar tus datos; solicitar prueba de la autorización; ser informado del uso que se les da; presentar quejas ante la Superintendencia de Industria y Comercio; revocar la autorización y solicitar la supresión de tus datos cuando no exista un deber legal o contractual de conservarlos; y acceder gratuitamente a ellos. Puedes ejercerlos escribiendo a ' + CORREO_CONTACTO + '.',
+        'Tus derechos como titular: conocer, actualizar y rectificar tus datos; solicitar prueba de la autorización; ser informado del uso que se les da; presentar quejas ante la Superintendencia de Industria y Comercio; revocar la autorización y solicitar la supresión de tus datos cuando no exista un deber legal o contractual de conservarlos; y acceder gratuitamente a ellos. Puedes ejercerlos a través de la sección de Ayuda de la aplicación.',
         'Aplicamos medidas técnicas y administrativas razonables (comunicaciones cifradas, control de acceso y almacenamiento protegido de credenciales) para proteger tu información. Ningún sistema es completamente infalible; si detectamos un incidente que te afecte, te lo informaremos.',
         'Conservamos tus datos mientras tengas una cuenta activa y durante el tiempo necesario para cumplir obligaciones legales o resolver reportes.',
       ],
@@ -141,7 +138,7 @@ const ES: Terminos = {
       titulo: '13. Ley aplicable y contacto',
       parrafos: [
         'Estos términos se rigen por las leyes de la República de Colombia. Las diferencias se intentarán resolver primero de manera directa y, si no es posible, ante los jueces competentes de Bogotá D.C.',
-        'Para dudas, solicitudes sobre tus datos o reportes, escríbenos a ' + CORREO_CONTACTO + ' o usa la sección de Ayuda de la aplicación.',
+        'Para dudas, solicitudes sobre tus datos o reportes, usa la sección de Ayuda de la aplicación.',
       ],
     },
   ],
@@ -230,9 +227,9 @@ const EN: Terminos = {
         'Purposes: create and manage your account, connect drivers and passengers, verify vehicles and documents, show routes and live location, keep the community safe, handle reports and improve the app. We do not sell your data.',
         'Biometric data: if you enable fingerprint or face login, the check is performed by your device\'s operating system. WheelTrees does not receive or store your fingerprint or face; it only keeps, protected on your device, your preference to use that method. Biometric data is sensitive data and its use is always optional.',
         'Driver and vehicle documents: photos of the driver\'s license and the registration card are collected only to verify that you may drive and that the vehicle can be registered on the platform. These documents may contain sensitive data, such as the blood type (RH) shown on the license. Because the data is sensitive, you are not obliged to provide it; however, without it your driver registration cannot be approved. We process it only with your prior, express and informed authorization, which you give through a separate checkbox on the vehicle registration form.',
-        'Who sees those documents: only WheelTrees administrators, to review and approve or reject the vehicle. They are not shown to other users. They are kept while the vehicle is registered and deleted on your request, unless there is a legal duty to keep them. If the registration card belongs to someone else, you declare that you have their authorization to share their data with WheelTrees. You may revoke your authorization and request deletion of the documents by writing to ' + CORREO_CONTACTO + '. In that case the vehicle will no longer be allowed to publish trips.',
+        'Who sees those documents: only WheelTrees administrators, to review and approve or reject the vehicle. They are not shown to other users. They are kept while the vehicle is registered and deleted on your request, unless there is a legal duty to keep them. If the registration card belongs to someone else, you declare that you have their authorization to share their data with WheelTrees. You may revoke your authorization and request deletion of the documents through the Help section of the app. In that case the vehicle will no longer be allowed to publish trips.',
         'Third-party services: we use Google Maps Platform for maps, place search and routes, and cloud infrastructure to host information. That infrastructure may be located outside Colombia, so your data may be transferred to and stored in other countries, with adequate security measures. These providers process data under their own policies.',
-        'Your rights as a data subject: know, update and correct your data; request proof of your authorization; be informed of how your data is used; file complaints with the Superintendence of Industry and Commerce; revoke your authorization and request deletion where there is no legal or contractual duty to keep the data; and access it free of charge. You can exercise them by writing to ' + CORREO_CONTACTO + '.',
+        'Your rights as a data subject: know, update and correct your data; request proof of your authorization; be informed of how your data is used; file complaints with the Superintendence of Industry and Commerce; revoke your authorization and request deletion where there is no legal or contractual duty to keep the data; and access it free of charge. You can exercise them through the Help section of the app.',
         'We apply reasonable technical and administrative measures (encrypted communications, access control and protected credential storage) to protect your information. No system is completely infallible; if we detect an incident affecting you, we will let you know.',
         'We keep your data while your account is active and for as long as needed to meet legal obligations or resolve reports.',
       ],
@@ -262,7 +259,7 @@ const EN: Terminos = {
       titulo: '13. Governing law and contact',
       parrafos: [
         'These terms are governed by the laws of the Republic of Colombia. Disputes will first be settled directly and, if that is not possible, before the competent courts of Bogotá D.C.',
-        'For questions, data requests or reports, write to ' + CORREO_CONTACTO + ' or use the Help section of the app.',
+        'For questions, data requests or reports, use the Help section of the app.',
       ],
     },
   ],

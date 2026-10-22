@@ -1,25 +1,50 @@
-﻿node.exe : PASS __tests__/services/auth.test.ts
+﻿node.exe : PASS __tests__/services/api.test.ts (5.708 s)
 En línea: 1 Carácter: 1
 + & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
 + ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    + CategoryInfo          : NotSpecified: (PASS __tests__/services/auth.test.ts:String) [], RemoteException
+    + CategoryInfo          : NotSpecified: (PASS __tests__/...st.ts (5.708 s):String) [], RemoteException
     + FullyQualifiedErrorId : NativeCommandError
  
-PASS __tests__/services/viajes.test.ts
-PASS __tests__/context/AuthContext.test.tsx
-------------------|---------|----------|---------|---------|-------------------
-File              | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
-------------------|---------|----------|---------|---------|-------------------
-All files         |   99.15 |     93.1 |     100 |     100 |                   
- context          |   98.66 |     90.9 |     100 |     100 |                   
-  AuthContext.tsx |   98.66 |     90.9 |     100 |     100 | 150-163           
- services         |     100 |      100 |     100 |     100 |                   
-  auth.ts         |     100 |      100 |     100 |     100 |                   
-  viajes.ts       |     100 |      100 |     100 |     100 |                   
-------------------|---------|----------|---------|---------|-------------------
+PASS __tests__/services/auth.test.ts (5.493 s)
+PASS __tests__/context/AuthContext.test.tsx (6.821 s)
+PASS __tests__/services/biometrics.test.ts (5.689 s)
+PASS __tests__/services/viajes.test.ts (5.89 s)
+FAIL __tests__/app/login.test.tsx (17.069 s)
+  ÔùÅ [LOGIN] formulario y validaciones ÔÇ║ LOG-01 muestra titulo, campos y boton de ingreso
 
-Test Suites: 3 passed, 3 total
-Tests:       40 passed, 40 total
+    thrown: "Exceeded timeout of 5000 ms for a test.
+    Add a timeout value to this test to increase the timeout, if this is a long-running test. See 
+https://jestjs.io/docs/api#testname-fn-timeout."
+
+    [0m [90m 66 |[39m
+     [90m 67 |[39m describe([32m'[LOGIN] formulario y validaciones'[39m[33m,[39m () [33m=>[39m {
+    [31m[1m>[22m[39m[90m 68 |[39m   it([32m'LOG-01 muestra titulo, campos y boton de ingreso'[39m[33m,[39m 
+[36masync[39m () [33m=>[39m {
+     [90m    |[39m   [31m[1m^[22m[39m
+     [90m 69 |[39m     [36mconst[39m u [33m=[39m [36mawait[39m pantalla()[33m;[39m
+     [90m 70 |[39m     expect(u[33m.[39mgetByText([32m'login.title'[39m))[33m.[39mtoBeTruthy()[33m;[39m
+     [90m 71 |[39m     
+expect(u[33m.[39mgetByPlaceholderText([32m'login.usernamePlaceholder'[39m))[33m.[39mtoBeTruthy()[33m;[39m[0m
+
+      at it (__tests__/app/login.test.tsx:68:3)
+      at Object.describe (__tests__/app/login.test.tsx:67:1)
+
+------------------|---------|----------|---------|---------|-----------------------------
+File              | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s           
+------------------|---------|----------|---------|---------|-----------------------------
+All files         |   94.88 |    87.11 |   86.11 |   95.27 |                             
+ app              |   87.12 |    79.71 |    62.5 |   87.75 |                             
+  login.tsx       |   87.12 |    79.71 |    62.5 |   87.75 | 141-142,175-178,266-290,363 
+ context          |   98.66 |     90.9 |     100 |     100 |                             
+  AuthContext.tsx |   98.66 |     90.9 |     100 |     100 | 150-163                     
+ services         |   99.14 |    93.05 |   97.22 |   99.07 |                             
+  api.ts          |     100 |    88.09 |     100 |     100 | 6,14,41,50,62               
+  auth.ts         |     100 |      100 |     100 |     100 |                             
+  biometrics.ts   |   97.67 |      100 |    90.9 |   97.43 | 61                          
+  viajes.ts       |     100 |      100 |     100 |     100 |                             
+------------------|---------|----------|---------|---------|-----------------------------
+Test Suites: 1 failed, 5 passed, 6 total
+Tests:       1 failed, 90 passed, 91 total
 Snapshots:   0 total
-Time:        5.205 s, estimated 18 s
+Time:        20.504 s
 Ran all test suites.
